@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Controle de Estoque</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Tela de Login -->
+  <div id="telaLogin" class="tela ativa">
+    <div class="container-login">
+      <h1>Controle de Estoque</h1>
+      <form id="formLogin">
+        <div class="form-group">
+          <label for="loginUsuario">Usuário:</label>
+          <input type="text" id="loginUsuario" required>
+        </div>
+        <div class="form-group">
+          <label for="loginSenha">Senha:</label>
+          <input type="password" id="loginSenha" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Entrar</button>
+      </form>
+      <p class="link-registrar">
+        Não tem conta? <a href="#" onclick="mostrarTela('telaRegistro')">Registre-se aqui</a>
+      </p>
+      <div id="mensagemLogin" class="mensagem-erro"></div>
+    </div>
+  </div>
+
+  <!-- Tela de Registro -->
+  <div id="telaRegistro" class="tela">
+    <div class="container-login">
+      <h1>Registrar Novo Usuário</h1>
+      <form id="formRegistro">
+        <div class="form-group">
+          <label for="registroUsuario">Usuário:</label>
+          <input type="text" id="registroUsuario" required>
+        </div>
+        <div class="form-group">
+          <label for="registroSenha">Senha:</label>
+          <input type="password" id="registroSenha" required>
+        </div>
+        <div class="form-group">
+          <label for="registroConfirmar">Confirmar Senha:</label>
+          <input type="password" id="registroConfirmar" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Registrar</button>
+      </form>
+      <p class="link-registrar">
+        Já tem conta? <a href="#" onclick="mostrarTela('telaLogin')">Faça login</a>
+      </p>
+      <div id="mensagemRegistro" class="mensagem-erro"></div>
+    </div>
+  </div>
+
+  <!-- Tela de Seleção de Turno -->
+  <div id="telaTurno" class="tela">
+    <div class="container-turno">
+      <h1>Selecione seu Turno</h1>
+      <p>Bem-vindo, <span id="nomeTurno"></span>!</p>
+      <div class="botoes-turno">
+        <button class="btn btn-turno" onclick="definirTurno('manhã')">☀️ Turno da Manhã</button>
+        <button class="btn btn-turno" onclick="definirTurno('noite')">🌙 Turno da Noite</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Menu Principal -->
+  <nav id="navbar" class="navbar">
+    <div class="navbar-logo">Controle de Estoque</div>
+    <div class="navbar-user">
+      <span id="nomeUsuarioNav"></span>
+      <span id="turnoNav" class="turno-badge"></span>
+    </div>
+    <ul class="navbar-menu">
+      <li><a href="#" onclick="mostrarTela('telaVendas')">Vender</a></li>
+      <li><a href="#" onclick="mostrarTela('telaCadastroProduto')">Cadastro de Produtos</a></li>
+      <li><a href="#" onclick="mostrarTela('telaRelatorio')">Relatório</a></li>
+      <li><a href="#" onclick="mudarTurno()">Mudar Turno</a></li>
+      <li><a href="#" onclick="logout()">Logout</a></li>
+    </ul>
+  </nav>
+
+  <!-- Tela de Venda -->
+  <div id="telaVendas" class="tela">
+    <div class="container">
+      <h1>Registrar Venda</h1>
+      
+      <div class="secao-vendas">
+        <h2>Clique nos Produtos para Vender</h2>
+        <div id="gridProdutos" class="grid-produtos"></div>
+      </div>
+
+      <div class="secao-carrinho">
+        <h3>Quantidade Selecionada</h3>
+        <div id="infoCarrinho" class="info-carrinho">
+          <p>Produto: <strong id="produtoSelecionado">Nenhum</strong></p>
+          <p>Quantidade: <strong id="quantidadeSelecionada">0</strong></p>
+          <p>Total: <strong id="totalCarrinho">R$ 0,00</strong></p>
+          <div style="display: flex; gap: 10px; margin-top: 15px;">
+            <button id="btnConfirmarVenda" class="btn btn-success" style="flex: 1;">Confirmar Venda</button>
+            <button id="btnLimparCarrinho" class="btn" style="flex: 1; background-color: #95a5a6;">Limpar</button>
+          </div>
+        </div>
+      </div>
+
+      <h2>Vendas do Dia</h2>
+      <div id="listaVendasDia" class="lista-vendas"></div>
+      <div class="total-dia">
+        <h3>Total do Dia: <span id="totalDia">R$ 0,00</span></h3>
+      </div>
+
+      <div id="mensagemVenda" class="mensagem"></div>
+    </div>
+  </div>
+
+  <!-- Tela de Cadastro de Produtos -->
+  <div id="telaCadastroProduto" class="tela">
+    <div class="container">
+      <h1>Cadastro de Produtos</h1>
+      <form id="formProduto">
+        <div class="form-group">
+          <label for="nomeProduto">Nome do Produto:</label>
+          <input type="text" id="nomeProduto" required>
+        </div>
+        <div class="form-group">
+          <label for="precoProduto">Preço (R$):</label>
+          <input type="number" id="precoProduto" min="0" step="0.01" required>
+        </div>
+        <div class="form-group">
+          <label for="quantidadeProduto">Quantidade Inicial:</label>
+          <input type="number" id="quantidadeProduto" min="0" required>
+        </div>
+        <button type="submit" class="btn btn-success">Cadastrar Produto</button>
+      </form>
+
+      <h2>Produtos Cadastrados</h2>
+      <div class="tabela-produtos">
+        <table id="tabelaProdutos">
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>Preço</th>
+              <th>Quantidade em Estoque</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="corpoProdutos">
+          </tbody>
+        </table>
+      </div>
+
+      <div id="mensagemProduto" class="mensagem"></div>
+    </div>
+  </div>
+
+  <!-- Tela de Relatório -->
+  <div id="telaRelatorio" class="tela">
+    <div class="container">
+      <h1>Relatório de Vendas</h1>
+      <div class="filtro-relatorio">
+        <button class="btn btn-filtro ativo" onclick="carregarRelatorio('dia', this)">Hoje</button>
+        <button class="btn btn-filtro" onclick="carregarRelatorio('mes', this)">Mês</button>
+        <button class="btn btn-filtro" onclick="carregarRelatorio('ano', this)">Ano</button>
+      </div>
+
+      <div id="relatorioConteudo" class="relatorio-conteudo"></div>
+      <div id="mensagemRelatorio" class="mensagem"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
