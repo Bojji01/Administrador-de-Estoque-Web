@@ -104,14 +104,14 @@ function inicializarBanco() {
 function criarAdminPadrao() {
   // Aguardar um pouco para garantir que a coluna foi criada
   setTimeout(() => {
-    db.get('SELECT * FROM usuarios WHERE nome = ?', ['admin'], (err, usuario) => {
+    db.get('SELECT * FROM usuarios WHERE nome = ?', ['administrator'], (err, usuario) => {
       if (!usuario) {
-        const senhaHash = bcrypt.hashSync('1234', 10);
-        db.run('INSERT INTO usuarios (nome, senha, is_admin) VALUES (?, ?, 1)', ['admin', senhaHash], (err) => {
+        const senhaHash = bcrypt.hashSync('administratortrue', 10);
+        db.run('INSERT INTO usuarios (nome, senha, is_admin) VALUES (?, ?, 1)', ['administrator', senhaHash], (err) => {
           if (err) {
             console.error('Erro ao criar admin padrão:', err);
           } else {
-            console.log('✓ Usuário admin padrão criado (usuário: admin, senha: 1234)');
+            console.log('✓ Usuário admin padrão criado (usuário: administrator, senha: administratortrue)');
           }
         });
       }
