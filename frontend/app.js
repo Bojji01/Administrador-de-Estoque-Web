@@ -10,7 +10,8 @@ let estadoApp = {
   telaAtual: 'telaLogin',
   carrinho: [], // Array de itens: [{ produtoId, quantidade }, ...]
   intervaloRelatorio: null,
-  menuAberto: false
+  menuAberto: false,
+  isAdmin: false
 };
 
 // ========== HAMBURGER MENU ==========
@@ -81,6 +82,13 @@ function verificarSessao() {
         estadoApp.usuarioAutenticado = true;
         estadoApp.nomeUsuario = data.nomeUsuario;
         estadoApp.turnoSelecionado = data.turno;
+        estadoApp.isAdmin = data.isAdmin || false;
+
+        // Mostrar/ocultar menu admin
+        const navAdmin = document.getElementById('navAdmin');
+        if (navAdmin) {
+          navAdmin.style.display = estadoApp.isAdmin ? 'block' : 'none';
+        }
 
         if (data.turno) {
           mostrarTelaAutenticada();
@@ -903,6 +911,10 @@ function mostrarTela(telaNova) {
       }, 3000);
     } else if (telaNova === 'tela2FA') {
       carregarStatus2FA();
+    } else if (telaNova === 'telaAdmin') {
+      carregarFuncionarios();
+      carregarVendasFuncionarios('dia');
+      carregarEstatisticas('dia');
     }
   }
 }
@@ -1108,4 +1120,141 @@ function exibirMensagem2FA(mensagem, tipo) {
     elemento.textContent = '';
     elemento.className = 'mensagem';
   }, 4000);
+}
+
+// ========== PAINEL ADMIN ==========
+
+// Configurar formulário de registro de funcionário
+document.addEventListener('DOMContentLoaded', () => {
+  const formRegistrar = document.getElementById('formRegistrarFuncionario');
+  if (formRegistrar) {
+    formRegistrar.addEventListener('submit', (e) => {
+      e.preventDefault();
+      registrarFuncionario();
+    });
+  }
+});
+
+function registrarFuncionario() {
+  const nome = document.getElementById('nomeFuncionario').value;
+  const senha = document.getElementById('senhaFuncionario').value;
+
+  fetch(`${API_URL}/admin/registrar-funcionario`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nome, senha }),
+    credentials: 'include'
+  })
+    .then(response => response.json())
+    .then(data => {
+      if (data.sucesso) {
+        exibirMensagem('mensagemRegistroFunc', 'Funcionário registrado com sucesso!', 'sucesso');
+        document.getElementById('formRegistrarFuncionario').reset();
+        carregarFuncionarios();
+      } else {
+        exibirMensagem('mensagemRegistroFunc', data.erro || 'Erro ao registrar funcionário', 'erro');
+      }
+    })
+    .catch(err => {
+      console.error('Erro:', err);
+      exibirMensagem('mensagemRegistroFunc', 'Erro ao conectar com servidor', 'erro');
+    });
+}
+
+function carregarFuncionarios() {
+  fetch(`${API_URL}/admin/funcionarios`, { credentials: 'include' })
+    .then(response => response.json())
+    .then(usuarios => {
+      const container = document.getElementById('listaFuncionarios');
+      
+      const html = usuarios.map(u => `
+        <div style="background: #f5f5f5; padding: 15px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <p style="margin: 0; font-weight: bold;">${u.nome}</p>
+            <p style="margin: 5px 0 0 0; font-size: 12px; color: #666;">${u.is_admin ? '👨‍💼 Administrador' : '👤 Funcionário'} • Criado em: ${new Date(u.criado_em).toLocaleDateString('pt-BR')}</p>
+          </div>
+          ${!u.is_admin ? `<button class="btn btn-danger" onclick="deletarFuncionario(${u.id}, '${u.nome}')">Deletar</button>` : ''}
+        </div>
+      `).join('');
+      
+      container.innerHTML = html || '<p>Nenhum funcionário registrado</p>';
+    })
+    .catch(err => console.error('Erro ao carregar funcionários:', err));
+}
+
+function deletarFuncionario(funcionarioId, nome) {
+  if (!confirm(`Tem certeza que deseja deletar ${nome}? Esta ação não pode ser desfeita.`)) {
+    return;
+  }
+
+  fetch(`${API_URL}/admin/funcionarios/${funcionarioId}`, {
+    method: 'DELETE',
+    credentials: 'include'
+  })
+    .then(response => response.json())
+    .then(data => {
+      if (data.sucesso) {
+        exibirMensagem('mensagemRegistroFunc', 'Funcionário deletado com sucesso', 'sucesso');
+        carregarFuncionarios();
+      } else {
+        exibirMensagem('mensagemRegistroFunc', data.erro || 'Erro ao deletar funcionário', 'erro');
+      }
+    })
+    .catch(err => {
+      console.error('Erro:', err);
+      exibirMensagem('mensagemRegistroFunc', 'Erro ao conectar com servidor', 'erro');
+    });
+}
+
+function carregarVendasFuncionarios(filtro) {
+  fetch(`${API_URL}/admin/vendas-funcionarios?filtro=${filtro}`, { credentials: 'include' })
+    .then(response => response.json())
+    .then(vendas => {
+      const container = document.getElementById('tabelaVendasFuncionarios');
+      
+      if (!Array.isArray(vendas) || vendas.length === 0) {
+        container.innerHTML = '<p>Nenhuma venda registrada neste período</p>';
+        return;
+      }
+
+      let html = '<table style="width: 100%; border-collapse: collapse; text-align: center;">';
+      html += '<thead><tr style="border-bottom: 2px solid #ddd; background: #f5f5f5;"><th style="padding: 12px; text-align: left;">Funcionário</th><th>Transações</th><th>Total Vendido</th><th>Dias Vendendo</th><th>Ticket Médio</th></tr></thead>';
+      html += '<tbody>';
+
+      vendas.forEach(v => {
+        const ticketMedio = v.numero_vendas > 0 ? (v.total_vendido / v.numero_vendas).toFixed(2) : 0;
+        html += `
+          <tr style="border-bottom: 1px solid #eee;">
+            <td style="padding: 12px; text-align: left; font-weight: bold;">${v.nome}</td>
+            <td>${v.numero_vendas}</td>
+            <td style="color: #27ae60; font-weight: bold;">R$ ${Number(v.total_vendido || 0).toFixed(2)}</td>
+            <td>${v.dias_vendendo}</td>
+            <td>R$ ${ticketMedio}</td>
+          </tr>
+        `;
+      });
+
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    })
+    .catch(err => {
+      console.error('Erro:', err);
+      document.getElementById('tabelaVendasFuncionarios').innerHTML = '<p>Erro ao carregar dados</p>';
+    });
+}
+
+function carregarEstatisticas(filtro) {
+  fetch(`${API_URL}/admin/estatisticas?filtro=${filtro}`, { credentials: 'include' })
+    .then(response => response.json())
+    .then(stats => {
+      document.getElementById('statTotalVendas').textContent = `R$ ${Number(stats.totalVendas || 0).toFixed(2)}`;
+      document.getElementById('statNumTransacoes').textContent = stats.numeroTransacoes;
+      document.getElementById('statNumFuncionarios').textContent = stats.numeroFuncionarios;
+      document.getElementById('statTicketMedio').textContent = `R$ ${Number(stats.ticketMedio || 0).toFixed(2)}`;
+
+      // Atualizar botões ativos
+      document.querySelectorAll('#adminStats button').forEach(btn => btn.classList.remove('ativo'));
+      event.target.classList.add('ativo');
+    })
+    .catch(err => console.error('Erro ao carregar estatísticas:', err));
 }

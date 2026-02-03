@@ -60,6 +60,9 @@ function inicializarBanco() {
   // Adicionar colunas de 2FA se não existirem
   adicionarColunaSeNaoExistir('usuarios', 'totp_secret', 'TEXT');
   adicionarColunaSeNaoExistir('usuarios', 'totp_ativado', 'INTEGER DEFAULT 0');
+  
+  // Adicionar coluna de admin se não existir
+  adicionarColunaSeNaoExistir('usuarios', 'is_admin', 'INTEGER DEFAULT 0');
 
   // Tabela de produtos
   db.run(`
@@ -123,9 +126,23 @@ const verificarAutenticacao = (req, res, next) => {
   next();
 };
 
+// Middleware para verificar se é administrador
+const verificarAdmin = (req, res, next) => {
+  if (!req.session.usuarioId) {
+    return res.status(401).json({ erro: 'Não autenticado' });
+  }
+  
+  db.get('SELECT is_admin FROM usuarios WHERE id = ?', [req.session.usuarioId], (err, usuario) => {
+    if (err || !usuario || !usuario.is_admin) {
+      return res.status(403).json({ erro: 'Acesso negado. Apenas administradores podem acessar.' });
+    }
+    next();
+  });
+};
+
 // ========== ROTAS DE AUTENTICAÇÃO ==========
 
-// Registrar usuário
+// Registrar usuário (público - apenas primeira conta será admin)
 app.post('/api/registrar', (req, res) => {
   const { nome, senha } = req.body;
 
@@ -135,14 +152,165 @@ app.post('/api/registrar', (req, res) => {
 
   const senhaHash = bcrypt.hashSync(senha, 10);
 
-  db.run('INSERT INTO usuarios (nome, senha) VALUES (?, ?)', [nome, senhaHash], (err) => {
-    if (err) {
-      if (err.message.includes('UNIQUE')) {
-        return res.status(400).json({ erro: 'Usuário já existe' });
+  // Verificar se é a primeira conta (será admin)
+  db.get('SELECT COUNT(*) as count FROM usuarios', (err, result) => {
+    const isFirstUser = result && result.count === 0;
+    
+    db.run('INSERT INTO usuarios (nome, senha, is_admin) VALUES (?, ?, ?)', 
+      [nome, senhaHash, isFirstUser ? 1 : 0], 
+      (err) => {
+        if (err) {
+          if (err.message.includes('UNIQUE')) {
+            return res.status(400).json({ erro: 'Usuário já existe' });
+          }
+          return res.status(500).json({ erro: 'Erro ao registrar usuário' });
+        }
+        res.json({ 
+          sucesso: true, 
+          mensagem: isFirstUser ? 'Admin criado com sucesso!' : 'Usuário registrado com sucesso' 
+        });
       }
-      return res.status(500).json({ erro: 'Erro ao registrar usuário' });
+    );
+  });
+});
+
+// Registrar novo funcionário (apenas admin)
+app.post('/api/admin/registrar-funcionario', verificarAdmin, (req, res) => {
+  const { nome, senha } = req.body;
+
+  if (!nome || !senha) {
+    return res.status(400).json({ erro: 'Nome e senha obrigatórios' });
+  }
+
+  const senhaHash = bcrypt.hashSync(senha, 10);
+
+  db.run('INSERT INTO usuarios (nome, senha, is_admin) VALUES (?, ?, 0)', 
+    [nome, senhaHash], 
+    function(err) {
+      if (err) {
+        if (err.message.includes('UNIQUE')) {
+          return res.status(400).json({ erro: 'Usuário já existe' });
+        }
+        return res.status(500).json({ erro: 'Erro ao registrar funcionário' });
+      }
+      res.json({ 
+        sucesso: true, 
+        id: this.lastID,
+        mensagem: 'Funcionário registrado com sucesso' 
+      });
     }
-    res.json({ sucesso: true, mensagem: 'Usuário registrado com sucesso' });
+  );
+});
+
+// Listar todos os funcionários (apenas admin)
+app.get('/api/admin/funcionarios', verificarAdmin, (req, res) => {
+  db.all('SELECT id, nome, is_admin, criado_em FROM usuarios ORDER BY nome', (err, usuarios) => {
+    if (err) {
+      return res.status(500).json({ erro: 'Erro ao buscar funcionários' });
+    }
+    res.json(usuarios);
+  });
+});
+
+// Deletar funcionário (apenas admin)
+app.delete('/api/admin/funcionarios/:id', verificarAdmin, (req, res) => {
+  const funcionarioId = req.params.id;
+  
+  // Não permitir deletar a si mesmo
+  if (parseInt(funcionarioId) === req.session.usuarioId) {
+    return res.status(400).json({ erro: 'Você não pode deletar sua própria conta' });
+  }
+
+  db.run('DELETE FROM usuarios WHERE id = ?', [funcionarioId], (err) => {
+    if (err) {
+      return res.status(500).json({ erro: 'Erro ao deletar funcionário' });
+    }
+    res.json({ sucesso: true, mensagem: 'Funcionário deletado com sucesso' });
+  });
+});
+
+// Dashboard de vendas por funcionário (apenas admin)
+app.get('/api/admin/vendas-funcionarios', verificarAdmin, (req, res) => {
+  const { filtro } = req.query; // 'dia', 'mes', 'ano'
+  
+  let dataFilter = '';
+  const hoje = new Date();
+  
+  if (filtro === 'dia') {
+    const dataHoje = hoje.toISOString().split('T')[0];
+    dataFilter = `AND DATE(vendas.data_venda) = '${dataHoje}'`;
+  } else if (filtro === 'mes') {
+    const mes = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0');
+    dataFilter = `AND strftime('%Y-%m', vendas.data_venda) = '${mes}'`;
+  } else if (filtro === 'ano') {
+    const ano = hoje.getFullYear();
+    dataFilter = `AND strftime('%Y', vendas.data_venda) = '${ano}'`;
+  }
+
+  db.all(`
+    SELECT 
+      usuarios.id,
+      usuarios.nome,
+      COUNT(vendas.id) as numero_vendas,
+      COALESCE(SUM(vendas.quantidade * vendas.preco_unitario), 0) as total_vendido,
+      COUNT(DISTINCT DATE(vendas.data_venda)) as dias_vendendo
+    FROM usuarios
+    LEFT JOIN vendas ON usuarios.id = vendas.usuario_id ${dataFilter}
+    WHERE usuarios.is_admin = 0
+    GROUP BY usuarios.id, usuarios.nome
+    ORDER BY total_vendido DESC
+  `, (err, vendas) => {
+    if (err) {
+      console.error('Erro ao buscar vendas de funcionários:', err);
+      return res.status(500).json({ erro: 'Erro ao buscar vendas' });
+    }
+    res.json(vendas);
+  });
+});
+
+// Estatísticas gerais (apenas admin)
+app.get('/api/admin/estatisticas', verificarAdmin, (req, res) => {
+  const { filtro } = req.query; // 'dia', 'mes', 'ano'
+  
+  let dataFilter = '';
+  const hoje = new Date();
+  
+  if (filtro === 'dia') {
+    const dataHoje = hoje.toISOString().split('T')[0];
+    dataFilter = `WHERE DATE(data_venda) = '${dataHoje}'`;
+  } else if (filtro === 'mes') {
+    const mes = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0');
+    dataFilter = `WHERE strftime('%Y-%m', data_venda) = '${mes}'`;
+  } else if (filtro === 'ano') {
+    const ano = hoje.getFullYear();
+    dataFilter = `WHERE strftime('%Y', data_venda) = '${ano}'`;
+  }
+
+  const queries = {
+    totalVendas: new Promise((resolve) => {
+      db.get(`SELECT COALESCE(SUM(quantidade * preco_unitario), 0) as total FROM vendas ${dataFilter}`, (err, result) => {
+        resolve(result ? result.total : 0);
+      });
+    }),
+    numeroTransacoes: new Promise((resolve) => {
+      db.get(`SELECT COUNT(*) as count FROM vendas ${dataFilter}`, (err, result) => {
+        resolve(result ? result.count : 0);
+      });
+    }),
+    numeroFuncionarios: new Promise((resolve) => {
+      db.get('SELECT COUNT(*) as count FROM usuarios WHERE is_admin = 0', (err, result) => {
+        resolve(result ? result.count : 0);
+      });
+    })
+  };
+
+  Promise.all(Object.values(queries)).then(([totalVendas, numeroTransacoes, numeroFuncionarios]) => {
+    res.json({
+      totalVendas,
+      numeroTransacoes,
+      numeroFuncionarios,
+      ticketMedio: numeroTransacoes > 0 ? (totalVendas / numeroTransacoes).toFixed(2) : 0
+    });
   });
 });
 
@@ -202,10 +370,13 @@ app.post('/api/logout', (req, res) => {
 // Verificar sessão
 app.get('/api/sessao', (req, res) => {
   if (req.session.usuarioId) {
-    res.json({ 
-      autenticado: true, 
-      nomeUsuario: req.session.nomeUsuario,
-      turno: req.session.turno || null
+    db.get('SELECT is_admin FROM usuarios WHERE id = ?', [req.session.usuarioId], (err, usuario) => {
+      res.json({ 
+        autenticado: true, 
+        nomeUsuario: req.session.nomeUsuario,
+        turno: req.session.turno || null,
+        isAdmin: usuario && usuario.is_admin === 1
+      });
     });
   } else {
     res.json({ autenticado: false });

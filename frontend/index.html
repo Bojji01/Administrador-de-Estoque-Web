@@ -91,6 +91,7 @@
           <li><a href="#" onclick="mostrarTela('telaCadastroProduto'); closeMenu()">Cadastro de Produtos</a></li>
           <li><a href="#" onclick="mostrarTela('telaRelatorio'); closeMenu()">Relatório</a></li>
           <li><a href="#" onclick="mostrarTela('tela2FA'); closeMenu()">Segurança</a></li>
+          <li id="navAdmin" style="display: none;"><a href="#" onclick="mostrarTela('telaAdmin'); closeMenu()">👨‍💼 Admin</a></li>
           <li><a href="#" onclick="mudarTurno(); closeMenu()">Mudar Turno</a></li>
           <li><a href="#" onclick="logout()">Logout</a></li>
         </ul>
@@ -266,6 +267,69 @@
       </div>
 
       <button type="button" class="btn" style="background: #95a5a6;" onclick="mostrarTela('telaRelatorio')">Voltar</button>
+    </div>
+  </div>
+
+  <!-- PAINEL ADMIN -->
+  <div id="telaAdmin" class="tela">
+    <div class="container">
+      <h1>Painel Administrativo</h1>
+      
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px;">
+        <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+          <h3>Estatísticas</h3>
+          <div id="adminStats" style="display: grid; gap: 15px;">
+            <div style="padding: 10px; background: #f5f5f5; border-radius: 5px;">
+              <p style="margin: 0; color: #666;">Total de Vendas</p>
+              <p style="margin: 5px 0 0 0; font-size: 24px; font-weight: bold;" id="statTotalVendas">R$ 0,00</p>
+            </div>
+            <div style="padding: 10px; background: #f5f5f5; border-radius: 5px;">
+              <p style="margin: 0; color: #666;">Número de Transações</p>
+              <p style="margin: 5px 0 0 0; font-size: 24px; font-weight: bold;" id="statNumTransacoes">0</p>
+            </div>
+            <div style="padding: 10px; background: #f5f5f5; border-radius: 5px;">
+              <p style="margin: 0; color: #666;">Número de Funcionários</p>
+              <p style="margin: 5px 0 0 0; font-size: 24px; font-weight: bold;" id="statNumFuncionarios">0</p>
+            </div>
+            <div style="padding: 10px; background: #f5f5f5; border-radius: 5px;">
+              <p style="margin: 0; color: #666;">Ticket Médio</p>
+              <p style="margin: 5px 0 0 0; font-size: 24px; font-weight: bold;" id="statTicketMedio">R$ 0,00</p>
+            </div>
+          </div>
+          <div style="margin-top: 15px; display: flex; gap: 10px;">
+            <button class="btn btn-primary" onclick="carregarEstatisticas('dia')" style="flex: 1; font-size: 12px;">Hoje</button>
+            <button class="btn" onclick="carregarEstatisticas('mes')" style="flex: 1; font-size: 12px;">Este Mês</button>
+            <button class="btn" onclick="carregarEstatisticas('ano')" style="flex: 1; font-size: 12px;">Este Ano</button>
+          </div>
+        </div>
+
+        <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+          <h3>Registrar Funcionário</h3>
+          <form id="formRegistrarFuncionario" style="display: flex; flex-direction: column; gap: 10px;">
+            <input type="text" id="nomeFuncionario" placeholder="Nome do funcionário" required style="padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+            <input type="password" id="senhaFuncionario" placeholder="Senha" required style="padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+            <button type="submit" class="btn btn-success">Registrar</button>
+          </form>
+          <div id="mensagemRegistroFunc" class="mensagem" style="margin-top: 10px;"></div>
+        </div>
+      </div>
+
+      <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+        <h3>Desempenho de Vendas por Funcionário</h3>
+        <div style="margin-bottom: 15px; display: flex; gap: 10px;">
+          <button class="btn btn-primary" onclick="carregarVendasFuncionarios('dia')" style="font-size: 12px;">Hoje</button>
+          <button class="btn" onclick="carregarVendasFuncionarios('mes')" style="font-size: 12px;">Este Mês</button>
+          <button class="btn" onclick="carregarVendasFuncionarios('ano')" style="font-size: 12px;">Este Ano</button>
+        </div>
+        <div id="tabelaVendasFuncionarios" style="overflow-x: auto;"></div>
+      </div>
+
+      <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd; margin-top: 20px;">
+        <h3>Gerenciar Funcionários</h3>
+        <div id="listaFuncionarios" style="display: grid; gap: 10px;"></div>
+      </div>
+
+      <button type="button" class="btn" style="background: #95a5a6; margin-top: 20px;" onclick="mostrarTela('telaVendas')">Voltar</button>
     </div>
   </div>
 
