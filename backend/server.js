@@ -4,6 +4,8 @@ const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
 const bcrypt = require('bcryptjs');
 const path = require('path');
+const speakeasy = require('speakeasy');
+const QRCode = require('qrcode');
 
 const app = express();
 const PORT = 3000;
@@ -49,9 +51,15 @@ function inicializarBanco() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       nome TEXT UNIQUE NOT NULL,
       senha TEXT NOT NULL,
+      totp_secret TEXT,
+      totp_ativado INTEGER DEFAULT 0,
       criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Adicionar colunas de 2FA se não existirem
+  adicionarColunaSeNaoExistir('usuarios', 'totp_secret', 'TEXT');
+  adicionarColunaSeNaoExistir('usuarios', 'totp_ativado', 'INTEGER DEFAULT 0');
 
   // Tabela de produtos
   db.run(`
@@ -66,35 +74,9 @@ function inicializarBanco() {
     )
   `);
 
-  // Garantir migração: se uma base antiga não tiver as colunas 'minimo' e 'categoria', adicioná-las
-  db.all("PRAGMA table_info(produtos)", (err, cols) => {
-    if (err) {
-      console.error('Erro verificando colunas de produtos:', err);
-      return;
-    }
-    const temMinimo = cols && cols.some(c => c.name === 'minimo');
-    const temCategoria = cols && cols.some(c => c.name === 'categoria');
-    
-    if (!temMinimo) {
-      db.run('ALTER TABLE produtos ADD COLUMN minimo INTEGER NOT NULL DEFAULT 0', (err) => {
-        if (err) {
-          console.error('Erro ao adicionar coluna minimo:', err);
-        } else {
-          console.log('Coluna "minimo" adicionada à tabela produtos');
-        }
-      });
-    }
-    
-    if (!temCategoria) {
-      db.run("ALTER TABLE produtos ADD COLUMN categoria TEXT NOT NULL DEFAULT 'mercadoria'", (err) => {
-        if (err) {
-          console.error('Erro ao adicionar coluna categoria:', err);
-        } else {
-          console.log('Coluna "categoria" adicionada à tabela produtos');
-        }
-      });
-    }
-  });
+  // Adicionar colunas de migração se não existirem
+  adicionarColunaSeNaoExistir('produtos', 'minimo', 'INTEGER NOT NULL DEFAULT 0');
+  adicionarColunaSeNaoExistir('produtos', 'categoria', "TEXT NOT NULL DEFAULT 'mercadoria'");
 
   // Tabela de vendas
   db.run(`
@@ -110,6 +92,27 @@ function inicializarBanco() {
       FOREIGN KEY(produto_id) REFERENCES produtos(id)
     )
   `);
+}
+
+// Função auxiliar para adicionar coluna se não existir
+function adicionarColunaSeNaoExistir(tabela, coluna, tipo) {
+  db.all(`PRAGMA table_info(${tabela})`, (err, cols) => {
+    if (err) {
+      console.error(`Erro verificando colunas de ${tabela}:`, err);
+      return;
+    }
+    const colunaCriada = cols && cols.some(c => c.name === coluna);
+    
+    if (!colunaCriada) {
+      db.run(`ALTER TABLE ${tabela} ADD COLUMN ${coluna} ${tipo}`, (err) => {
+        if (err && !err.message.includes('duplicate')) {
+          console.error(`Erro ao adicionar coluna ${coluna} em ${tabela}:`, err);
+        } else if (!err) {
+          console.log(`Coluna "${coluna}" adicionada à tabela ${tabela}`);
+        }
+      });
+    }
+  });
 }
 
 // Middleware para verificar autenticação
@@ -145,7 +148,7 @@ app.post('/api/registrar', (req, res) => {
 
 // Login
 app.post('/api/login', (req, res) => {
-  const { nome, senha } = req.body;
+  const { nome, senha, totp_code } = req.body;
 
   if (!nome || !senha) {
     return res.status(400).json({ erro: 'Nome e senha obrigatórios' });
@@ -158,6 +161,25 @@ app.post('/api/login', (req, res) => {
 
     if (!bcrypt.compareSync(senha, usuario.senha)) {
       return res.status(401).json({ erro: 'Usuário ou senha inválidos' });
+    }
+
+    // Se 2FA está ativado, verificar código TOTP
+    if (usuario.totp_ativado && usuario.totp_secret) {
+      if (!totp_code) {
+        return res.json({ sucesso: false, requer_totp: true, mensagem: 'Código 2FA obrigatório' });
+      }
+
+      // Verificar código TOTP
+      const isValidToken = speakeasy.totp.verify({
+        secret: usuario.totp_secret,
+        encoding: 'base32',
+        token: totp_code,
+        window: 2 // Permitir 2 passos de diferença (±30 segundos)
+      });
+
+      if (!isValidToken) {
+        return res.status(401).json({ erro: 'Código 2FA inválido' });
+      }
     }
 
     req.session.usuarioId = usuario.id;
@@ -315,8 +337,6 @@ app.post('/api/produtos/:id/aumentar', verificarAutenticacao, (req, res) => {
   const { quantidade } = req.body;
   const produtoId = req.params.id;
 
-  console.log(`AUMENTAR pedido - produtoId=${produtoId} quantidade=${quantidade} usuario=${req.session && req.session.nomeUsuario}`);
-
   if (!quantidade || quantidade <= 0) {
     return res.status(400).json({ erro: 'Quantidade inválida' });
   }
@@ -343,8 +363,6 @@ app.post('/api/produtos/:id/aumentar', verificarAutenticacao, (req, res) => {
 app.post('/api/produtos/:id/diminuir', verificarAutenticacao, (req, res) => {
   const { quantidade } = req.body;
   const produtoId = req.params.id;
-
-  console.log(`DIMINUIR pedido - produtoId=${produtoId} quantidade=${quantidade} usuario=${req.session && req.session.nomeUsuario}`);
 
   if (!quantidade || quantidade <= 0) {
     return res.status(400).json({ erro: 'Quantidade inválida' });
@@ -376,8 +394,6 @@ app.post('/api/produtos/:id/diminuir', verificarAutenticacao, (req, res) => {
 // Deletar produto
 app.delete('/api/produtos/:id', verificarAutenticacao, (req, res) => {
   const produtoId = req.params.id;
-
-  console.log(`DELETAR pedido - produtoId=${produtoId} usuario=${req.session && req.session.nomeUsuario}`);
 
   db.get('SELECT * FROM produtos WHERE id = ?', [produtoId], (err, produto) => {
     if (err || !produto) {
@@ -516,6 +532,130 @@ app.get('/api/vendas-dia', verificarAutenticacao, (req, res) => {
       res.json({ vendas, totalVendido });
     }
   );
+});
+
+// ========== 2FA (Google Authenticator) ==========
+
+// Gerar QR Code para ativar 2FA
+app.post('/api/2fa/gerar-qr', verificarAutenticacao, (req, res) => {
+  db.get('SELECT * FROM usuarios WHERE id = ?', [req.session.usuarioId], (err, usuario) => {
+    if (err || !usuario) {
+      return res.status(404).json({ erro: 'Usuário não encontrado' });
+    }
+
+    // Gerar novo segredo
+    const secret = speakeasy.generateSecret({
+      name: `Controle Estoque (${usuario.nome})`,
+      issuer: 'Controle Estoque',
+      length: 32
+    });
+
+    // Gerar QR Code
+    QRCode.toDataURL(secret.otpauth_url, (err, data_url) => {
+      if (err) {
+        return res.status(500).json({ erro: 'Erro ao gerar QR code' });
+      }
+
+      res.json({
+        qr_code: data_url,
+        secret: secret.base32,
+        mensagem: 'Escaneie o código QR com Google Authenticator'
+      });
+    });
+  });
+});
+
+// Ativar 2FA
+app.post('/api/2fa/ativar', verificarAutenticacao, (req, res) => {
+  const { secret, totp_code } = req.body;
+
+  if (!secret || !totp_code) {
+    return res.status(400).json({ erro: 'Segredo e código TOTP obrigatórios' });
+  }
+
+  // Verificar se o código TOTP é válido para este segredo
+  const isValidToken = speakeasy.totp.verify({
+    secret: secret,
+    encoding: 'base32',
+    token: totp_code,
+    window: 2
+  });
+
+  if (!isValidToken) {
+    return res.status(401).json({ erro: 'Código 2FA inválido. Tente novamente.' });
+  }
+
+  // Salvar segredo no banco de dados
+  db.run(
+    'UPDATE usuarios SET totp_secret = ?, totp_ativado = 1 WHERE id = ?',
+    [secret, req.session.usuarioId],
+    (err) => {
+      if (err) {
+        return res.status(500).json({ erro: 'Erro ao ativar 2FA' });
+      }
+
+      res.json({
+        sucesso: true,
+        mensagem: '2FA ativado com sucesso'
+      });
+    }
+  );
+});
+
+// Desativar 2FA
+app.post('/api/2fa/desativar', verificarAutenticacao, (req, res) => {
+  const { totp_code } = req.body;
+
+  db.get('SELECT * FROM usuarios WHERE id = ?', [req.session.usuarioId], (err, usuario) => {
+    if (err || !usuario) {
+      return res.status(404).json({ erro: 'Usuário não encontrado' });
+    }
+
+    if (!usuario.totp_ativado) {
+      return res.status(400).json({ erro: '2FA não está ativado' });
+    }
+
+    // Verificar código TOTP antes de desativar
+    const isValidToken = speakeasy.totp.verify({
+      secret: usuario.totp_secret,
+      encoding: 'base32',
+      token: totp_code,
+      window: 2
+    });
+
+    if (!isValidToken) {
+      return res.status(401).json({ erro: 'Código 2FA inválido' });
+    }
+
+    // Desativar 2FA
+    db.run(
+      'UPDATE usuarios SET totp_ativado = 0, totp_secret = NULL WHERE id = ?',
+      [req.session.usuarioId],
+      (err) => {
+        if (err) {
+          return res.status(500).json({ erro: 'Erro ao desativar 2FA' });
+        }
+
+        res.json({
+          sucesso: true,
+          mensagem: '2FA desativado com sucesso'
+        });
+      }
+    );
+  });
+});
+
+// Verificar status do 2FA
+app.get('/api/2fa/status', verificarAutenticacao, (req, res) => {
+  db.get('SELECT totp_ativado FROM usuarios WHERE id = ?', [req.session.usuarioId], (err, usuario) => {
+    if (err || !usuario) {
+      return res.status(404).json({ erro: 'Usuário não encontrado' });
+    }
+
+    res.json({
+      totp_ativado: usuario.totp_ativado === 1
+    });
+  });
 });
 
 // Handler para rotas API não encontradas (ajuda no debug de 404)

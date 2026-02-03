@@ -21,6 +21,10 @@
           <label for="loginSenha">Senha:</label>
           <input type="password" id="loginSenha" required>
         </div>
+        <div class="form-group" id="grupoTOTP" style="display: none;">
+          <label for="loginTOTP">Código de Autenticação (6 dígitos):</label>
+          <input type="text" id="loginTOTP" maxlength="6" placeholder="000000">
+        </div>
         <button type="submit" class="btn btn-primary">Entrar</button>
       </form>
       <p class="link-registrar">
@@ -86,6 +90,7 @@
           <li><a href="#" onclick="mostrarTela('telaVendas'); closeMenu()">Vender</a></li>
           <li><a href="#" onclick="mostrarTela('telaCadastroProduto'); closeMenu()">Cadastro de Produtos</a></li>
           <li><a href="#" onclick="mostrarTela('telaRelatorio'); closeMenu()">Relatório</a></li>
+          <li><a href="#" onclick="mostrarTela('tela2FA'); closeMenu()">Segurança</a></li>
           <li><a href="#" onclick="mudarTurno(); closeMenu()">Mudar Turno</a></li>
           <li><a href="#" onclick="logout()">Logout</a></li>
         </ul>
@@ -203,6 +208,64 @@
       <hr style="margin: 20px 0;">
       <h2>Produtos em Alerta</h2>
       <div id="listaAlertas" class="lista-alertas"></div>
+    </div>
+  </div>
+
+  <!-- Tela de Segurança (2FA) -->
+  <div id="tela2FA" class="tela">
+    <div class="container">
+      <h1>Segurança e Autenticação</h1>
+      
+      <div id="secao2FA" style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 20px;">
+        <h2>Autenticação de Dois Fatores (2FA)</h2>
+        
+        <div id="status2FA" style="margin-bottom: 20px;">
+          <p>Status: <span id="statusTexto" style="font-weight: bold; color: #e74c3c;">Desativado</span></p>
+        </div>
+
+        <!-- Formulário para ativar 2FA -->
+        <div id="formularioAtivar2FA">
+          <p>Ative a autenticação de dois fatores usando Google Authenticator para maior segurança.</p>
+          <button type="button" class="btn btn-primary" onclick="iniciarAtivacao2FA()">Ativar Autenticação de 2 Fatores</button>
+        </div>
+
+        <!-- QR Code para escanear -->
+        <div id="passoQRCode" style="display: none; margin: 20px 0;">
+          <h3>Passo 1: Escaneie o código QR</h3>
+          <p>Escaneie este código com seu aplicativo Google Authenticator:</p>
+          <div id="containerQRCode" style="text-align: center; margin: 20px 0; padding: 20px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 5px;">
+            <img id="qrCodeImage" src="" alt="QR Code" style="max-width: 300px; width: 300px; height: 300px; display: inline-block; border: 2px solid #ddd; padding: 10px; background: white;">
+          </div>
+          <button type="button" class="btn" onclick="cancelarAtivacao2FA()" style="background: #95a5a6; margin-right: 10px;">Cancelar</button>
+          <button type="button" class="btn btn-primary" onclick="irParaPasso2()">Próximo</button>
+        </div>
+
+        <!-- Verificação de código -->
+        <div id="passoVerificacao" style="display: none; margin: 20px 0;">
+          <h3>Passo 2: Verifique o código</h3>
+          <p>Digite os 6 dígitos exibidos no seu aplicativo de autenticação:</p>
+          <div style="margin: 20px 0;">
+            <input type="text" id="inputCodigoVerificacao" maxlength="6" placeholder="000000" style="font-size: 20px; letter-spacing: 5px; padding: 10px; width: 150px; text-align: center;">
+          </div>
+          <button type="button" class="btn" onclick="voltarPasso1()" style="background: #95a5a6; margin-right: 10px;">Voltar</button>
+          <button type="button" class="btn btn-primary" onclick="ativar2FAComCodigo()">Confirmar e Ativar</button>
+        </div>
+
+        <!-- Botão para desativar 2FA -->
+        <div id="passoDesativar" style="display: none; margin: 20px 0;">
+          <h3>Autenticação de 2 Fatores Ativa ✓</h3>
+          <p>Sua conta está protegida por autenticação de dois fatores.</p>
+          <p>Para desativar, insira seu código de autenticação:</p>
+          <div style="margin: 20px 0;">
+            <input type="text" id="inputCodigoDesativar" maxlength="6" placeholder="000000" style="font-size: 20px; letter-spacing: 5px; padding: 10px; width: 150px; text-align: center;">
+          </div>
+          <button type="button" class="btn btn-danger" onclick="desativar2FA()">Desativar 2FA</button>
+        </div>
+
+        <div id="mensagem2FA" class="mensagem" style="margin-top: 20px;"></div>
+      </div>
+
+      <button type="button" class="btn" style="background: #95a5a6;" onclick="mostrarTela('telaRelatorio')">Voltar</button>
     </div>
   </div>
 

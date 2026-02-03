@@ -125,11 +125,12 @@ function configurarEventos() {
 function realizarLogin() {
   const nome = document.getElementById('loginUsuario').value;
   const senha = document.getElementById('loginSenha').value;
+  const totp_code = document.getElementById('loginTOTP').value;
 
   fetch(`${API_URL}/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ nome, senha }),
+    body: JSON.stringify({ nome, senha, totp_code: totp_code || undefined }),
     credentials: 'include'
   })
     .then(response => response.json())
@@ -141,6 +142,12 @@ function realizarLogin() {
         mostrarTela('telaTurno');
         document.getElementById('nomeTurno').textContent = data.nomeUsuario;
         document.getElementById('formLogin').reset();
+        document.getElementById('grupoTOTP').style.display = 'none';
+      } else if (data.requer_totp) {
+        // Mostrar campo de TOTP
+        document.getElementById('grupoTOTP').style.display = 'block';
+        document.getElementById('loginTOTP').focus();
+        exibirErro('mensagemLogin', data.mensagem);
       } else {
         exibirErro('mensagemLogin', data.erro || 'Erro ao fazer login');
       }
@@ -591,10 +598,6 @@ function registrarVenda() {
   });
 }
 
-function selecionarProdutoVenda(produtoId) {
-  // Mantido por compatibilidade, mas não usado
-}
-
 function carregarVendasDia() {
   fetch(`${API_URL}/vendas-dia`, {
     credentials: 'include'
@@ -898,6 +901,8 @@ function mostrarTela(telaNova) {
       estadoApp.intervaloRelatorio = setInterval(() => {
         carregarRelatorio('dia');
       }, 3000);
+    } else if (telaNova === 'tela2FA') {
+      carregarStatus2FA();
     }
   }
 }
@@ -921,5 +926,186 @@ function exibirErro(elementId, mensagem) {
 
   setTimeout(() => {
     elemento.classList.remove('ativo');
+  }, 4000);
+}
+
+// ========== 2FA (Google Authenticator) ==========
+
+let secretoAtual2FA = null;
+
+function carregarStatus2FA() {
+  fetch(`${API_URL}/2fa/status`, { credentials: 'include' })
+    .then(response => response.json())
+    .then(data => {
+      const statusTexto = document.getElementById('statusTexto');
+      const formularioAtivar = document.getElementById('formularioAtivar2FA');
+      const passoDesativar = document.getElementById('passoDesativar');
+
+      if (data.totp_ativado) {
+        statusTexto.textContent = '✓ Ativado';
+        statusTexto.style.color = '#27ae60';
+        formularioAtivar.style.display = 'none';
+        passoDesativar.style.display = 'block';
+      } else {
+        statusTexto.textContent = 'Desativado';
+        statusTexto.style.color = '#e74c3c';
+        formularioAtivar.style.display = 'block';
+        passoDesativar.style.display = 'none';
+      }
+    })
+    .catch(err => console.error('Erro ao carregar status 2FA:', err));
+}
+
+function iniciarAtivacao2FA() {
+  fetch(`${API_URL}/2fa/gerar-qr`, {
+    method: 'POST',
+    credentials: 'include'
+  })
+    .then(response => response.json())
+    .then(data => {
+      console.log('Dados recebidos:', data);
+      console.log('QR Code URL:', data.qr_code);
+      
+      secretoAtual2FA = data.secret;
+      const imgElement = document.getElementById('qrCodeImage');
+      imgElement.src = data.qr_code;
+      
+      // Garantir que a imagem está visível
+      imgElement.style.display = 'block';
+      imgElement.style.maxWidth = '300px';
+      imgElement.style.margin = '20px auto';
+      
+      document.getElementById('formularioAtivar2FA').style.display = 'none';
+      document.getElementById('passoQRCode').style.display = 'block';
+    })
+    .catch(err => {
+      console.error('Erro:', err);
+      exibirMensagem2FA('Erro ao gerar QR code', 'erro');
+    });
+}
+
+function irParaPasso2() {
+  if (!secretoAtual2FA) {
+    exibirMensagem2FA('Erro: Segredo não encontrado', 'erro');
+    return;
+  }
+  
+  document.getElementById('passoQRCode').style.display = 'none';
+  document.getElementById('passoVerificacao').style.display = 'block';
+  document.getElementById('inputCodigoVerificacao').focus();
+}
+
+function voltarPasso1() {
+  document.getElementById('passoQRCode').style.display = 'block';
+  document.getElementById('passoVerificacao').style.display = 'none';
+}
+
+function ativar2FAComCodigo() {
+  const codigo = document.getElementById('inputCodigoVerificacao').value;
+
+  if (!codigo || codigo.length !== 6) {
+    exibirMensagem2FA('Digite um código válido de 6 dígitos', 'erro');
+    return;
+  }
+
+  fetch(`${API_URL}/2fa/ativar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ secret: secretoAtual2FA, totp_code: codigo }),
+    credentials: 'include'
+  })
+    .then(response => response.json())
+    .then(data => {
+      if (data.sucesso) {
+        exibirMensagem2FA('2FA ativado com sucesso! ✓', 'sucesso');
+        
+        setTimeout(() => {
+          document.getElementById('passoVerificacao').style.display = 'none';
+          document.getElementById('passoQRCode').style.display = 'none';
+          document.getElementById('formularioAtivar2FA').style.display = 'none';
+          document.getElementById('passoDesativar').style.display = 'block';
+          
+          const statusTexto = document.getElementById('statusTexto');
+          statusTexto.textContent = '✓ Ativado';
+          statusTexto.style.color = '#27ae60';
+          
+          document.getElementById('inputCodigoVerificacao').value = '';
+          secretoAtual2FA = null;
+        }, 1500);
+      } else {
+        exibirMensagem2FA(data.erro || 'Erro ao ativar 2FA', 'erro');
+      }
+    })
+    .catch(err => {
+      console.error('Erro:', err);
+      exibirMensagem2FA('Erro ao conectar com servidor', 'erro');
+    });
+}
+
+function desativar2FA() {
+  const codigo = document.getElementById('inputCodigoDesativar').value;
+
+  if (!codigo || codigo.length !== 6) {
+    exibirMensagem2FA('Digite um código válido de 6 dígitos', 'erro');
+    return;
+  }
+
+  if (!confirm('Tem certeza que deseja desativar 2FA? Sua conta ficará menos segura.')) {
+    return;
+  }
+
+  fetch(`${API_URL}/2fa/desativar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ totp_code: codigo }),
+    credentials: 'include'
+  })
+    .then(response => response.json())
+    .then(data => {
+      if (data.sucesso) {
+        exibirMensagem2FA('2FA desativado com sucesso', 'sucesso');
+        
+        setTimeout(() => {
+          document.getElementById('passoDesativar').style.display = 'none';
+          document.getElementById('formularioAtivar2FA').style.display = 'block';
+          
+          const statusTexto = document.getElementById('statusTexto');
+          statusTexto.textContent = 'Desativado';
+          statusTexto.style.color = '#e74c3c';
+          
+          document.getElementById('inputCodigoDesativar').value = '';
+        }, 1500);
+      } else {
+        exibirMensagem2FA(data.erro || 'Erro ao desativar 2FA', 'erro');
+      }
+    })
+    .catch(err => {
+      console.error('Erro:', err);
+      exibirMensagem2FA('Erro ao conectar com servidor', 'erro');
+    });
+}
+
+function cancelarAtivacao2FA() {
+  document.getElementById('passoQRCode').style.display = 'none';
+  document.getElementById('passoVerificacao').style.display = 'none';
+  document.getElementById('formularioAtivar2FA').style.display = 'block';
+  document.getElementById('inputCodigoVerificacao').value = '';
+  secretoAtual2FA = null;
+}
+
+function exibirMensagem2FA(mensagem, tipo) {
+  const elemento = document.getElementById('mensagem2FA');
+  elemento.textContent = mensagem;
+  elemento.className = 'mensagem';
+  
+  if (tipo === 'sucesso') {
+    elemento.classList.add('sucesso');
+  } else if (tipo === 'erro') {
+    elemento.classList.add('erro');
+  }
+
+  setTimeout(() => {
+    elemento.textContent = '';
+    elemento.className = 'mensagem';
   }, 4000);
 }
