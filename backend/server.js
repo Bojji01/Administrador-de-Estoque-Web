@@ -95,6 +95,28 @@ function inicializarBanco() {
       FOREIGN KEY(produto_id) REFERENCES produtos(id)
     )
   `);
+  
+  // Criar usuário admin padrão se não existir
+  criarAdminPadrao();
+}
+
+// Criar usuário admin padrão se não existir
+function criarAdminPadrao() {
+  // Aguardar um pouco para garantir que a coluna foi criada
+  setTimeout(() => {
+    db.get('SELECT * FROM usuarios WHERE nome = ?', ['admin'], (err, usuario) => {
+      if (!usuario) {
+        const senhaHash = bcrypt.hashSync('1234', 10);
+        db.run('INSERT INTO usuarios (nome, senha, is_admin) VALUES (?, ?, 1)', ['admin', senhaHash], (err) => {
+          if (err) {
+            console.error('Erro ao criar admin padrão:', err);
+          } else {
+            console.log('✓ Usuário admin padrão criado (usuário: admin, senha: 1234)');
+          }
+        });
+      }
+    });
+  }, 500);
 }
 
 // Função auxiliar para adicionar coluna se não existir
