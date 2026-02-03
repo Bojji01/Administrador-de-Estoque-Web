@@ -8,12 +8,62 @@ let estadoApp = {
   turnoSelecionado: null,
   produtos: [],
   telaAtual: 'telaLogin',
-  carrinhoAtual: {
-    produtoId: null,
-    quantidade: 0
-  },
-  intervaloRelatorio: null
+  carrinho: [], // Array de itens: [{ produtoId, quantidade }, ...]
+  intervaloRelatorio: null,
+  menuAberto: false
 };
+
+// ========== HAMBURGER MENU ==========
+
+function toggleMenu() {
+  estadoApp.menuAberto = !estadoApp.menuAberto;
+  const hamburger = document.getElementById('hamburgerBtn');
+  const navCenter = document.querySelector('.navbar-center');
+  
+  if (!hamburger || !navCenter) return;
+
+  if (estadoApp.menuAberto) {
+    hamburger.classList.add('active');
+    navCenter.classList.add('active');
+    document.body.style.overflow = 'hidden'; // Impedir scroll
+  } else {
+    hamburger.classList.remove('active');
+    navCenter.classList.remove('active');
+    document.body.style.overflow = 'auto';
+  }
+}
+
+function closeMenu() {
+  if (estadoApp.menuAberto) {
+    estadoApp.menuAberto = false;
+    const hamburger = document.getElementById('hamburgerBtn');
+    const navCenter = document.querySelector('.navbar-center');
+    
+    if (hamburger) hamburger.classList.remove('active');
+    if (navCenter) navCenter.classList.remove('active');
+    document.body.style.overflow = 'auto';
+  }
+}
+
+// Fechar menu ao clicar fora
+document.addEventListener('click', (e) => {
+  const navbar = document.getElementById('navbar');
+  const hamburger = document.getElementById('hamburgerBtn');
+  const navCenter = document.querySelector('.navbar-center');
+  
+  if (navbar && hamburger && navCenter) {
+    if (!navbar.contains(e.target) && estadoApp.menuAberto) {
+      closeMenu();
+    }
+  }
+});
+
+// Fechar menu ao redimensionar
+window.addEventListener('resize', () => {
+  if (window.innerWidth > 768) {
+    closeMenu();
+  }
+});
 
 // Inicialização
 document.addEventListener('DOMContentLoaded', () => {
@@ -193,35 +243,53 @@ function carregarProdutos() {
 
 function atualizarGridProdutos() {
   const grid = document.getElementById('gridProdutos');
-  const html = estadoApp.produtos.map(p => `
-    <div class="produto-card ${estadoApp.carrinhoAtual.produtoId === p.id ? 'selecionado' : ''}" 
-         onclick="selecionarProdutoVenda(${p.id})" 
+  const html = estadoApp.produtos.map(p => {
+    const itemCarrinho = estadoApp.carrinho.find(item => item.produtoId === p.id);
+    const selecionado = itemCarrinho ? 'selecionado' : '';
+    const qtyDisplay = itemCarrinho ? `(${itemCarrinho.quantidade})` : '';
+
+    return `
+    <div class="produto-card ${selecionado}" 
+         onclick="adicionarAoCarrinho(${p.id})" 
          title="${p.nome}">
       <h4>${p.nome}</h4>
       <p class="produto-preco">R$ ${p.preco.toFixed(2)}</p>
       <p>📦 ${p.quantidade}</p>
+      <p style="font-weight: bold; color: #27ae60;">${qtyDisplay}</p>
     </div>
-  `).join('');
+  `;
+  }).join('');
   grid.innerHTML = html || '<p>Nenhum produto cadastrado</p>';
 }
 
 function atualizarTabelaProdutos() {
   const tbody = document.getElementById('corpoProdutos');
-  const html = estadoApp.produtos.map(p => `
+  const html = estadoApp.produtos.map(p => {
+    const faltando = Math.max(0, (p.minimo || 0) - (p.quantidade || 0));
+    const nomeEscapado = (p.nome || '').replace(/'/g, "\\'");
+    const avisoClass = faltando > 0 ? 'aviso' : '';
+
+    return `
     <tr>
-      <td>${p.nome}</td>
+      <td class="${avisoClass}">${faltando > 0 ? '⚠️ ' : ''}${p.nome}</td>
+      <td>${faltando > 0 ? faltando : '-'}</td>
       <td>R$ ${p.preco.toFixed(2)}</td>
       <td>${p.quantidade}</td>
       <td>
         <div style="display: flex; gap: 5px; flex-wrap: wrap; align-items: center;">
-          <button class="btn-acao btn-deletar" onclick="deletarProduto(${p.id}, '${p.nome}')">🗑️ Del</button>
+          <button class="btn-acao btn-deletar" onclick="deletarProduto(${p.id}, '${nomeEscapado}')">🗑️ Del</button>
           <input type="number" min="1" value="1" id="qtd-${p.id}" style="width: 60px; padding: 6px;">
           <button class="btn-acao btn-adicionar" onclick="manipularEstoque(${p.id}, 'adicionar')">➕ Add</button>
           <button class="btn-acao btn-remover" onclick="manipularEstoque(${p.id}, 'remover')">➖ Rem</button>
+          <div style="display:flex; align-items:center; gap:6px; margin-left:6px;">
+            <input type="number" id="minimo-${p.id}" min="0" value="${p.minimo || 0}" style="width:70px; padding:6px;">
+            <button class="btn btn-primary" onclick="atualizarMinimo(${p.id})">Salvar mínimo</button>
+          </div>
         </div>
       </td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
   tbody.innerHTML = html;
 }
 
@@ -324,11 +392,13 @@ function cadastrarProduto() {
   const nome = document.getElementById('nomeProduto').value;
   const preco = parseFloat(document.getElementById('precoProduto').value);
   const quantidade = parseInt(document.getElementById('quantidadeProduto').value);
+  const minimo = parseInt(document.getElementById('minimoProduto').value) || 0;
+  const categoria = document.querySelector('input[name="categoria"]:checked')?.value || 'mercadoria';
 
   fetch(`${API_URL}/produtos`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ nome, preco, quantidade }),
+    body: JSON.stringify({ nome, preco, quantidade, minimo, categoria }),
     credentials: 'include'
   })
     .then(response => response.json())
@@ -341,81 +411,188 @@ function cadastrarProduto() {
     });
 }
 
+function atualizarMinimo(produtoId) {
+  const input = document.getElementById(`minimo-${produtoId}`);
+  if (!input) {
+    exibirMensagem('mensagemProduto', 'Elemento de mínimo não encontrado', 'erro');
+    return;
+  }
+
+  const minimo = parseInt(input.value, 10);
+  if (isNaN(minimo) || minimo < 0) {
+    exibirMensagem('mensagemProduto', 'Quantidade mínima inválida', 'erro');
+    return;
+  }
+
+  fetch(`${API_URL}/produtos/${produtoId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ minimo }),
+    credentials: 'include'
+  })
+    .then(async (response) => {
+      let data = null;
+      try { data = await response.json(); } catch (e) {}
+      if (!response.ok) {
+        const mensagemErro = (data && data.erro) ? data.erro : (response.statusText || 'Erro no servidor');
+        throw new Error(mensagemErro);
+      }
+      return data;
+    })
+    .then(data => {
+      exibirMensagem('mensagemProduto', 'Mínimo atualizado com sucesso', 'sucesso');
+      carregarProdutos();
+    })
+    .catch(err => {
+      console.error('Erro ao atualizar mínimo:', err);
+      exibirMensagem('mensagemProduto', err.message || 'Erro ao atualizar mínimo', 'erro');
+    });
+}
+
 // ========== VENDAS ==========
 
-function selecionarProdutoVenda(produtoId) {
+function adicionarAoCarrinho(produtoId) {
   const produto = estadoApp.produtos.find(p => p.id === produtoId);
   if (!produto) return;
 
-  // Se clicou no mesmo produto, aumenta quantidade
-  if (estadoApp.carrinhoAtual.produtoId === produtoId) {
-    if (estadoApp.carrinhoAtual.quantidade < produto.quantidade) {
-      estadoApp.carrinhoAtual.quantidade++;
+  // Verificar se produto já está no carrinho
+  const itemCarrinho = estadoApp.carrinho.find(item => item.produtoId === produtoId);
+  
+  if (itemCarrinho) {
+    // Aumentar quantidade se já está no carrinho
+    if (itemCarrinho.quantidade < produto.quantidade) {
+      itemCarrinho.quantidade++;
     } else {
       exibirMensagem('mensagemVenda', 'Quantidade disponível insuficiente', 'erro');
+      return;
     }
   } else {
-    // Novo produto selecionado
-    estadoApp.carrinhoAtual.produtoId = produtoId;
-    estadoApp.carrinhoAtual.quantidade = 1;
+    // Adicionar novo item ao carrinho
+    estadoApp.carrinho.push({
+      produtoId: produtoId,
+      quantidade: 1
+    });
   }
 
   atualizarGridProdutos();
-  atualizarInfoCarrinho();
+  atualizarVisualizacaoCarrinho();
 }
 
-function atualizarInfoCarrinho() {
-  const produto = estadoApp.produtos.find(p => p.id === estadoApp.carrinhoAtual.produtoId);
+function removerDoCarrinho(produtoId) {
+  estadoApp.carrinho = estadoApp.carrinho.filter(item => item.produtoId !== produtoId);
+  atualizarGridProdutos();
+  atualizarVisualizacaoCarrinho();
+}
+
+function aumentarQuantidadeCarrinho(produtoId) {
+  const item = estadoApp.carrinho.find(i => i.produtoId === produtoId);
+  const produto = estadoApp.produtos.find(p => p.id === produtoId);
   
-  if (!produto) {
-    document.getElementById('produtoSelecionado').textContent = 'Nenhum';
-    document.getElementById('quantidadeSelecionada').textContent = '0';
+  if (item && produto && item.quantidade < produto.quantidade) {
+    item.quantidade++;
+    atualizarVisualizacaoCarrinho();
+  }
+}
+
+function diminuirQuantidadeCarrinho(produtoId) {
+  const item = estadoApp.carrinho.find(i => i.produtoId === produtoId);
+  
+  if (item && item.quantidade > 1) {
+    item.quantidade--;
+    atualizarVisualizacaoCarrinho();
+  }
+}
+
+function atualizarVisualizacaoCarrinho() {
+  const container = document.getElementById('itensCarrinho');
+  
+  if (estadoApp.carrinho.length === 0) {
+    container.innerHTML = '<p style="text-align: center; color: #888;">Nenhum produto selecionado</p>';
     document.getElementById('totalCarrinho').textContent = 'R$ 0,00';
     return;
   }
 
-  const total = produto.preco * estadoApp.carrinhoAtual.quantidade;
-  
-  document.getElementById('produtoSelecionado').textContent = produto.nome;
-  document.getElementById('quantidadeSelecionada').textContent = estadoApp.carrinhoAtual.quantidade;
-  document.getElementById('totalCarrinho').textContent = `R$ ${total.toFixed(2)}`;
+  let html = '<table style="width: 100%; border-collapse: collapse;">';
+  html += '<thead><tr style="border-bottom: 2px solid #ddd;"><th style="text-align: left; padding: 8px;">Produto</th><th>Qtd</th><th>Preço Unit.</th><th>Total</th><th>Ações</th></tr></thead>';
+  html += '<tbody>';
+
+  let totalGeral = 0;
+
+  estadoApp.carrinho.forEach(item => {
+    const produto = estadoApp.produtos.find(p => p.id === item.produtoId);
+    if (!produto) return;
+    
+    const totalItem = produto.preco * item.quantidade;
+    totalGeral += totalItem;
+
+    html += `
+      <tr style="border-bottom: 1px solid #eee; padding: 8px;">
+        <td style="padding: 8px;">${produto.nome}</td>
+        <td style="text-align: center; padding: 8px;">
+          <button class="btn-qty" onclick="diminuirQuantidadeCarrinho(${produto.id})" style="padding: 2px 6px;">-</button>
+          ${item.quantidade}
+          <button class="btn-qty" onclick="aumentarQuantidadeCarrinho(${produto.id})" style="padding: 2px 6px;">+</button>
+        </td>
+        <td style="text-align: center; padding: 8px;">R$ ${produto.preco.toFixed(2)}</td>
+        <td style="text-align: center; padding: 8px;"><strong>R$ ${totalItem.toFixed(2)}</strong></td>
+        <td style="text-align: center; padding: 8px;">
+          <button class="btn-acao btn-remover" onclick="removerDoCarrinho(${produto.id})" style="padding: 4px 8px;">❌</button>
+        </td>
+      </tr>
+    `;
+  });
+
+  html += '</tbody></table>';
+  container.innerHTML = html;
+  document.getElementById('totalCarrinho').textContent = `R$ ${totalGeral.toFixed(2)}`;
 }
 
 function limparCarrinho() {
-  estadoApp.carrinhoAtual = { produtoId: null, quantidade: 0 };
+  estadoApp.carrinho = [];
   atualizarGridProdutos();
-  atualizarInfoCarrinho();
+  atualizarVisualizacaoCarrinho();
 }
 
 function registrarVenda() {
-  if (!estadoApp.carrinhoAtual.produtoId || estadoApp.carrinhoAtual.quantidade === 0) {
-    exibirMensagem('mensagemVenda', 'Selecione um produto clicando no card', 'erro');
+  if (estadoApp.carrinho.length === 0) {
+    exibirMensagem('mensagemVenda', 'Selecione ao menos um produto clicando no card', 'erro');
     return;
   }
 
-  const { produtoId, quantidade } = estadoApp.carrinhoAtual;
+  // Registrar cada item do carrinho como uma venda separada
+  let vendidosCount = 0;
+  let totalVendas = estadoApp.carrinho.length;
 
-  fetch(`${API_URL}/vendas`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ produtoId, quantidade }),
-    credentials: 'include'
-  })
-    .then(response => response.json())
-    .then(data => {
-      if (data.sucesso) {
-        exibirMensagem('mensagemVenda', '✅ Venda registrada com sucesso!', 'sucesso');
-        limparCarrinho();
-        carregarProdutos();
-        carregarVendasDia();
-      } else {
-        exibirMensagem('mensagemVenda', data.erro || 'Erro ao registrar venda', 'erro');
-      }
+  estadoApp.carrinho.forEach((item, index) => {
+    const { produtoId, quantidade } = item;
+
+    fetch(`${API_URL}/vendas`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ produtoId, quantidade }),
+      credentials: 'include'
     })
-    .catch(error => {
-      console.error('Erro:', error);
-      exibirMensagem('mensagemVenda', 'Erro ao registrar venda', 'erro');
-    });
+      .then(response => response.json())
+      .then(data => {
+        vendidosCount++;
+        
+        if (vendidosCount === totalVendas) {
+          // Todas as vendas foram registradas
+          exibirMensagem('mensagemVenda', `✅ ${totalVendas} item(ns) vendido(s) com sucesso!`, 'sucesso');
+          limparCarrinho();
+          carregarProdutos();
+          carregarVendasDia();
+        }
+      })
+      .catch(error => {
+        console.error('Erro:', error);
+        exibirMensagem('mensagemVenda', 'Erro ao registrar venda', 'erro');
+      });
+  });
+}
+
+function selecionarProdutoVenda(produtoId) {
+  // Mantido por compatibilidade, mas não usado
 }
 
 function carregarVendasDia() {
@@ -445,6 +622,101 @@ function carregarVendasDia() {
 
 // ========== RELATÓRIO ==========
 
+let chartInstance = null;
+
+function renderizarChartVendas(vendas, filtro) {
+  const ctx = document.getElementById('chartVendas');
+  if (!ctx) return;
+
+  // Agrupar vendas por categoria
+  const porCategoria = {
+    'cigarro': 0,
+    'recarga/chip': 0,
+    'mercadoria': 0
+  };
+
+  vendas.forEach(v => {
+    const cat = v.categoria || 'mercadoria';
+    if (cat in porCategoria) {
+      porCategoria[cat] += Number(v.total_vendido || 0);
+    }
+  });
+
+  // Cores para cada categoria
+  const cores = {
+    'cigarro': '#e74c3c',      // vermelho
+    'recarga/chip': '#3498db', // azul
+    'mercadoria': '#27ae60'    // verde
+  };
+
+  const labels = Object.keys(porCategoria);
+  const dados = Object.values(porCategoria);
+  const cores_array = labels.map(label => cores[label]);
+
+  // Destruir gráfico anterior se existir
+  if (chartInstance) {
+    chartInstance.destroy();
+  }
+
+  // Criar novo gráfico
+  chartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: [
+        '🚬 Cigarro',
+        '📱 Recarga/Chip',
+        '📦 Mercadoria'
+      ],
+      datasets: [
+        {
+          label: 'Total de Vendas (R$)',
+          data: dados,
+          backgroundColor: cores_array,
+          borderColor: cores_array,
+          borderWidth: 1,
+          borderRadius: 5
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      indexAxis: 'x',
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: {
+            callback: function(value) {
+              return 'R$ ' + value.toFixed(2);
+            }
+          },
+          title: {
+            display: true,
+            text: 'Valor em Reais'
+          }
+        }
+      },
+      plugins: {
+        legend: {
+          display: true,
+          position: 'top'
+        },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              return 'Total: R$ ' + context.parsed.y.toFixed(2);
+            }
+          }
+        },
+        title: {
+          display: true,
+          text: `Vendas por Categoria - ${filtro === 'dia' ? 'Hoje' : filtro === 'mes' ? 'Este Mês' : 'Este Ano'}`
+        }
+      }
+    }
+  });
+}
+
 function carregarRelatorio(filtro, btn) {
   // Atualizar botões ativos
   document.querySelectorAll('.btn-filtro').forEach(b => b.classList.remove('ativo'));
@@ -467,17 +739,44 @@ function carregarRelatorio(filtro, btn) {
         return;
       }
 
+      // Renderizar gráfico
+      renderizarChartVendas(vendas, filtro);
+
       const totalGeral = vendas.reduce((acc, v) => acc + (v.total_vendido || 0), 0);
 
       let html = '<div class="relatorio-resumo">';
-      html += vendas.map(v => `
-        <div class="relatorio-item">
-          <h4>Período: ${v.periodo}</h4>
-          <p>Turno: <strong>${v.turno}</strong></p>
-          <p>Total de Vendas: <strong>R$ ${Number(v.total_vendido || 0).toFixed(2)}</strong></p>
-          <p>Quantidade de Transações: <strong>${v.numero_vendas}</strong></p>
-        </div>
-      `).join('');
+      
+      // Agrupar vendas por categoria
+      const porCategoria = {};
+      vendas.forEach(v => {
+        const cat = v.categoria || 'mercadoria';
+        if (!porCategoria[cat]) porCategoria[cat] = [];
+        porCategoria[cat].push(v);
+      });
+
+      // Renderizar por categoria
+      Object.keys(porCategoria).forEach(categoria => {
+        const icone = categoria === 'cigarro' ? '🚬' : categoria === 'recarga/chip' ? '📱' : '📦';
+        const vendascategoria = porCategoria[categoria];
+        const totalCategoria = vendascategoria.reduce((acc, v) => acc + (v.total_vendido || 0), 0);
+
+        html += `<div style="margin-bottom: 20px; border: 1px solid #ddd; border-radius: 6px; padding: 10px;">`;
+        html += `<h3 style="margin-top: 0;">${icone} ${categoria.toUpperCase()}</h3>`;
+        
+        vendascategoria.forEach(v => {
+          html += `
+            <div class="relatorio-item">
+              <h4>Período: ${v.periodo}</h4>
+              <p>Turno: <strong>${v.turno}</strong></p>
+              <p>Total de Vendas: <strong>R$ ${Number(v.total_vendido || 0).toFixed(2)}</strong></p>
+              <p>Quantidade de Transações: <strong>${v.numero_vendas}</strong></p>
+            </div>
+          `;
+        });
+
+        html += `<div style="background: #f5f5f5; padding: 8px; margin-top: 8px; border-radius: 4px;"><strong>Subtotal ${categoria}: R$ ${totalCategoria.toFixed(2)}</strong></div>`;
+        html += `</div>`;
+      });
 
       html += `
         <div class="relatorio-item" style="background-color: #f0f0f0; border-left-color: #27ae60;">
@@ -488,10 +787,70 @@ function carregarRelatorio(filtro, btn) {
       html += '</div>';
 
       conteudo.innerHTML = html;
+
+      // Carregar lista de produtos em alerta logo abaixo do relatório
+      carregarAlertas();
     })
     .catch(err => {
       exibirMensagem('mensagemRelatorio', err.message || 'Erro ao carregar relatório', 'erro');
     });
+}
+
+function carregarAlertas() {
+  const container = document.getElementById('listaAlertas');
+  if (!container) return;
+
+  if (!estadoApp.usuarioAutenticado) {
+    container.innerHTML = '<p>Faça login para ver produtos em alerta</p>';
+    return;
+  }
+
+  fetch(`${API_URL}/produtos/alertas`, { credentials: 'include' })
+    .then(async response => {
+      let data;
+      try { data = await response.json(); } catch (e) { throw new Error('Resposta inválida do servidor'); }
+      if (!response.ok) throw new Error(data && data.erro ? data.erro : 'Erro ao carregar alertas');
+      return data;
+    })
+    .then(produtos => {
+      if (!Array.isArray(produtos) || produtos.length === 0) {
+        container.innerHTML = '<p>Nenhum produto em alerta</p>';
+        return;
+      }
+
+      const html = produtos.map(p => `
+        <div class="alerta-item">
+          <div class="alerta-info">
+            <span class="nome">${p.nome}</span>
+            <span class="faltando">Faltando: <strong>${p.faltando}</strong></span>
+          </div>
+          <div class="alerta-acoes">
+            <button class="btn btn-primary" onclick="irParaProduto(${p.id})">Ver / Editar</button>
+          </div>
+        </div>
+      `).join('');
+
+      container.innerHTML = html;
+    })
+    .catch(err => {
+      console.error('Erro ao carregar alertas:', err);
+      if (container) container.innerHTML = `<p class="mensagem-erro">${err.message}</p>`;
+    });
+}
+
+function irParaProduto(produtoId) {
+  // Navega para a tela de cadastro/edição de produto e foca o campo de mínimo
+  mostrarTela('telaCadastroProduto');
+  carregarProdutos();
+  setTimeout(() => {
+    const input = document.getElementById(`minimo-${produtoId}`);
+    if (input) {
+      input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      input.focus();
+      input.classList.add('destaque');
+      setTimeout(() => input.classList.remove('destaque'), 2000);
+    }
+  }, 400);
 }
 
 // ========== NAVEGAÇÃO E UI ==========

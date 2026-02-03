@@ -60,9 +60,41 @@ function inicializarBanco() {
       nome TEXT NOT NULL,
       preco REAL NOT NULL,
       quantidade INTEGER NOT NULL DEFAULT 0,
+      minimo INTEGER NOT NULL DEFAULT 0,
+      categoria TEXT NOT NULL DEFAULT 'mercadoria',
       criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Garantir migração: se uma base antiga não tiver as colunas 'minimo' e 'categoria', adicioná-las
+  db.all("PRAGMA table_info(produtos)", (err, cols) => {
+    if (err) {
+      console.error('Erro verificando colunas de produtos:', err);
+      return;
+    }
+    const temMinimo = cols && cols.some(c => c.name === 'minimo');
+    const temCategoria = cols && cols.some(c => c.name === 'categoria');
+    
+    if (!temMinimo) {
+      db.run('ALTER TABLE produtos ADD COLUMN minimo INTEGER NOT NULL DEFAULT 0', (err) => {
+        if (err) {
+          console.error('Erro ao adicionar coluna minimo:', err);
+        } else {
+          console.log('Coluna "minimo" adicionada à tabela produtos');
+        }
+      });
+    }
+    
+    if (!temCategoria) {
+      db.run("ALTER TABLE produtos ADD COLUMN categoria TEXT NOT NULL DEFAULT 'mercadoria'", (err) => {
+        if (err) {
+          console.error('Erro ao adicionar coluna categoria:', err);
+        } else {
+          console.log('Coluna "categoria" adicionada à tabela produtos');
+        }
+      });
+    }
+  });
 
   // Tabela de vendas
   db.run(`
@@ -184,11 +216,14 @@ app.get('/api/produtos', verificarAutenticacao, (req, res) => {
 
 // Criar produto
 app.post('/api/produtos', verificarAutenticacao, (req, res) => {
-  const { nome, preco, quantidade } = req.body;
+  const { nome, preco, quantidade, minimo, categoria } = req.body;
 
   if (!nome || !preco || quantidade === undefined) {
     return res.status(400).json({ erro: 'Campos obrigatórios faltando' });
   }
+
+  const minimoFinal = (minimo === undefined || minimo === null) ? 0 : parseInt(minimo, 10);
+  const categoriaFinal = (categoria && ['cigarro', 'recarga/chip', 'mercadoria'].includes(categoria)) ? categoria : 'mercadoria';
 
   // Verificar se produto com mesmo nome já existe
   db.get('SELECT * FROM produtos WHERE LOWER(nome) = LOWER(?)', [nome], (err, produtoExistente) => {
@@ -197,11 +232,13 @@ app.post('/api/produtos', verificarAutenticacao, (req, res) => {
     }
 
     if (produtoExistente) {
-      // Produto existe, somar quantidade e atualizar preço se diferente
+      // Produto existe, somar quantidade e atualizar preço, mínimo e categoria se fornecido
       const novaQuantidade = produtoExistente.quantidade + quantidade;
+      const novoMinimo = (minimo !== undefined && minimo !== null) ? minimoFinal : produtoExistente.minimo || 0;
+      const novaCategoria = categoria ? categoriaFinal : (produtoExistente.categoria || 'mercadoria');
       db.run(
-        'UPDATE produtos SET quantidade = ?, preco = ? WHERE id = ?',
-        [novaQuantidade, preco, produtoExistente.id],
+        'UPDATE produtos SET quantidade = ?, preco = ?, minimo = ?, categoria = ? WHERE id = ?',
+        [novaQuantidade, preco, novoMinimo, novaCategoria, produtoExistente.id],
         (err) => {
           if (err) {
             return res.status(500).json({ erro: 'Erro ao atualizar produto' });
@@ -212,8 +249,8 @@ app.post('/api/produtos', verificarAutenticacao, (req, res) => {
     } else {
       // Produto novo
       db.run(
-        'INSERT INTO produtos (nome, preco, quantidade) VALUES (?, ?, ?)',
-        [nome, preco, quantidade],
+        'INSERT INTO produtos (nome, preco, quantidade, minimo, categoria) VALUES (?, ?, ?, ?, ?)',
+        [nome, preco, quantidade, minimoFinal, categoriaFinal],
         function(err) {
           if (err) {
             return res.status(500).json({ erro: 'Erro ao criar produto' });
@@ -225,21 +262,52 @@ app.post('/api/produtos', verificarAutenticacao, (req, res) => {
   });
 });
 
-// Atualizar quantidade do produto (definir)
+// Produtos em alerta (minimo maior que quantidade)
+app.get('/api/produtos/alertas', verificarAutenticacao, (req, res) => {
+  db.all('SELECT id, nome, preco, quantidade, minimo FROM produtos WHERE minimo > quantidade ORDER BY nome', (err, produtos) => {
+    if (err) {
+      return res.status(500).json({ erro: 'Erro ao buscar produtos em alerta' });
+    }
+
+    const resultado = produtos.map(p => ({
+      id: p.id,
+      nome: p.nome,
+      preco: p.preco,
+      quantidade: p.quantidade,
+      minimo: p.minimo || 0,
+      faltando: Math.max(0, (p.minimo || 0) - (p.quantidade || 0))
+    }));
+
+    res.json(resultado);
+  });
+});
+
+// Atualizar quantidade, mínimo e categoria do produto (definir)
 app.put('/api/produtos/:id', verificarAutenticacao, (req, res) => {
-  const { quantidade } = req.body;
+  const { quantidade, minimo, categoria } = req.body;
   const produtoId = req.params.id;
 
-  db.run(
-    'UPDATE produtos SET quantidade = ? WHERE id = ?',
-    [quantidade, produtoId],
-    (err) => {
-      if (err) {
-        return res.status(500).json({ erro: 'Erro ao atualizar produto' });
-      }
-      res.json({ sucesso: true });
+  // Buscar produto atual para preservar valores se não fornecidos
+  db.get('SELECT * FROM produtos WHERE id = ?', [produtoId], (err, produto) => {
+    if (err || !produto) {
+      return res.status(404).json({ erro: 'Produto não encontrado' });
     }
-  );
+
+    const novaQuantidade = (quantidade === undefined || quantidade === null) ? produto.quantidade : quantidade;
+    const novoMinimo = (minimo === undefined || minimo === null) ? (produto.minimo || 0) : minimo;
+    const novaCategoria = (categoria && ['cigarro', 'recarga/chip', 'mercadoria'].includes(categoria)) ? categoria : (produto.categoria || 'mercadoria');
+
+    db.run(
+      'UPDATE produtos SET quantidade = ?, minimo = ?, categoria = ? WHERE id = ?',
+      [novaQuantidade, novoMinimo, novaCategoria, produtoId],
+      (err) => {
+        if (err) {
+          return res.status(500).json({ erro: 'Erro ao atualizar produto' });
+        }
+        res.json({ sucesso: true });
+      }
+    );
+  });
 });
 
 // Aumentar quantidade do produto
@@ -257,7 +325,6 @@ app.post('/api/produtos/:id/aumentar', verificarAutenticacao, (req, res) => {
     if (err || !produto) {
       return res.status(404).json({ erro: 'Produto não encontrado' });
     }
-
     const novaQuantidade = produto.quantidade + quantidade;
     db.run(
       'UPDATE produtos SET quantidade = ? WHERE id = ?',
@@ -388,27 +455,29 @@ app.get('/api/relatorio', verificarAutenticacao, (req, res) => {
     SELECT
       ${periodoExpr} as periodo,
       turno,
-      SUM(quantidade * preco_unitario) as total_vendido,
+      produtos.categoria,
+      SUM(vendas.quantidade * vendas.preco_unitario) as total_vendido,
       COUNT(*) as numero_vendas
     FROM vendas
-    WHERE usuario_id = ?
+    JOIN produtos ON vendas.produto_id = produtos.id
+    WHERE vendas.usuario_id = ?
   `;
 
   if (filtro === 'dia') {
     const dataHoje = hoje.toISOString().split('T')[0];
-    sql += ` AND DATE(data_venda) = ?`;
+    sql += ` AND DATE(vendas.data_venda) = ?`;
     params.push(dataHoje);
   } else if (filtro === 'mes') {
     const mes = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0');
-    sql += ` AND strftime('%Y-%m', data_venda) = ?`;
+    sql += ` AND strftime('%Y-%m', vendas.data_venda) = ?`;
     params.push(mes);
   } else if (filtro === 'ano') {
     const ano = hoje.getFullYear().toString();
-    sql += ` AND strftime('%Y', data_venda) = ?`;
+    sql += ` AND strftime('%Y', vendas.data_venda) = ?`;
     params.push(ano);
   }
 
-  sql += ` GROUP BY periodo, turno`;
+  sql += ` GROUP BY periodo, turno, produtos.categoria`;
 
   db.all(sql, params, (err, vendas) => {
     if (err) {
