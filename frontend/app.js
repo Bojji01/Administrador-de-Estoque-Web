@@ -86,8 +86,12 @@ function verificarSessao() {
 
         // Mostrar/ocultar menu admin
         const navAdmin = document.getElementById('navAdmin');
+        const navRegistroCrew = document.getElementById('navRegistroCrew');
         if (navAdmin) {
           navAdmin.style.display = estadoApp.isAdmin ? 'block' : 'none';
+        }
+        if (navRegistroCrew) {
+          navRegistroCrew.style.display = estadoApp.isAdmin ? 'block' : 'none';
         }
 
         if (data.turno) {
@@ -126,6 +130,15 @@ function configurarEventos() {
   if (btnConfirmar) btnConfirmar.addEventListener('click', registrarVenda);
   const btnLimpar = document.getElementById('btnLimparCarrinho');
   if (btnLimpar) btnLimpar.addEventListener('click', limparCarrinho);
+
+  // Evento do formulário de registro de crew member
+  const formRegistrarCrew = document.getElementById('formRegistrarCrew');
+  if (formRegistrarCrew) {
+    formRegistrarCrew.addEventListener('submit', (e) => {
+      e.preventDefault();
+      registrarCrewMembro();
+    });
+  }
 }
 
 // ========== AUTENTICAÇÃO ==========
@@ -915,6 +928,8 @@ function mostrarTela(telaNova) {
       carregarFuncionarios();
       carregarVendasFuncionarios('dia');
       carregarEstatisticas('dia');
+    } else if (telaNova === 'telaRegistroCrew') {
+      carregarListaCrewRegistrados();
     }
   }
 }
@@ -1257,4 +1272,103 @@ function carregarEstatisticas(filtro) {
       event.target.classList.add('ativo');
     })
     .catch(err => console.error('Erro ao carregar estatísticas:', err));
+}
+
+// ========== FUNÇÕES DE REGISTRO DE CREW MEMBER ==========
+
+function registrarCrewMembro() {
+  const nome = document.getElementById('nomeCrew').value.trim();
+  const senha = document.getElementById('senhaCrew').value;
+  const confirmarSenha = document.getElementById('confirmarSenhaCrew').value;
+
+  // Validações
+  if (!nome || !senha || !confirmarSenha) {
+    exibirMensagem('mensagemRegistroCrew', 'Por favor preencha todos os campos', 'erro');
+    return;
+  }
+
+  if (senha !== confirmarSenha) {
+    exibirMensagem('mensagemRegistroCrew', 'As senhas não conferem', 'erro');
+    return;
+  }
+
+  if (senha.length < 4) {
+    exibirMensagem('mensagemRegistroCrew', 'A senha deve ter pelo menos 4 caracteres', 'erro');
+    return;
+  }
+
+  // Enviar para servidor
+  fetch(`${API_URL}/admin/registrar-funcionario`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nome, senha }),
+    credentials: 'include'
+  })
+    .then(response => response.json())
+    .then(data => {
+      if (data.sucesso) {
+        exibirMensagem('mensagemRegistroCrew', 'Crew member registrado com sucesso!', 'sucesso');
+        document.getElementById('formRegistrarCrew').reset();
+        carregarListaCrewRegistrados();
+      } else {
+        exibirMensagem('mensagemRegistroCrew', data.erro || 'Erro ao registrar crew member', 'erro');
+      }
+    })
+    .catch(error => {
+      console.error('Erro:', error);
+      exibirMensagem('mensagemRegistroCrew', 'Erro ao conectar com servidor', 'erro');
+    });
+}
+
+function carregarListaCrewRegistrados() {
+  fetch(`${API_URL}/admin/funcionarios`, { credentials: 'include' })
+    .then(response => response.json())
+    .then(usuarios => {
+      const container = document.getElementById('listaCrewRegistrados');
+      
+      if (!Array.isArray(usuarios) || usuarios.length === 0) {
+        container.innerHTML = '<p style="text-align: center; color: #999;">Nenhum crew member registrado ainda</p>';
+        return;
+      }
+
+      const html = usuarios.map(u => `
+        <div style="background: #f9f9f9; padding: 12px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid ${u.is_admin ? '#9b59b6' : '#3498db'};">
+          <div>
+            <p style="margin: 0; font-weight: bold;">${u.nome}</p>
+            <p style="margin: 5px 0 0 0; font-size: 12px; color: #666;">${u.is_admin ? '👨‍💼 Administrador' : '👤 Crew Member'} • ${new Date(u.criado_em).toLocaleDateString('pt-BR')}</p>
+          </div>
+          ${!u.is_admin ? `<button class="btn btn-danger" onclick="deletarCrewMembro(${u.id}, '${u.nome}')">Remover</button>` : ''}
+        </div>
+      `).join('');
+      
+      container.innerHTML = html;
+    })
+    .catch(err => {
+      console.error('Erro ao carregar crew members:', err);
+      document.getElementById('listaCrewRegistrados').innerHTML = '<p style="color: #e74c3c;">Erro ao carregar crew members</p>';
+    });
+}
+
+function deletarCrewMembro(usuarioId, nome) {
+  if (!confirm(`Tem certeza que deseja remover ${nome}? Esta ação não pode ser desfeita.`)) {
+    return;
+  }
+
+  fetch(`${API_URL}/admin/funcionarios/${usuarioId}`, {
+    method: 'DELETE',
+    credentials: 'include'
+  })
+    .then(response => response.json())
+    .then(data => {
+      if (data.sucesso) {
+        exibirMensagem('mensagemRegistroCrew', 'Crew member removido com sucesso', 'sucesso');
+        carregarListaCrewRegistrados();
+      } else {
+        exibirMensagem('mensagemRegistroCrew', data.erro || 'Erro ao remover crew member', 'erro');
+      }
+    })
+    .catch(err => {
+      console.error('Erro:', err);
+      exibirMensagem('mensagemRegistroCrew', 'Erro ao conectar com servidor', 'erro');
+    });
 }

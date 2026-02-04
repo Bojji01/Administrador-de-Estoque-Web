@@ -91,6 +91,7 @@
           <li><a href="#" onclick="mostrarTela('telaCadastroProduto'); closeMenu()">Cadastro de Produtos</a></li>
           <li><a href="#" onclick="mostrarTela('telaRelatorio'); closeMenu()">Relatório</a></li>
           <li><a href="#" onclick="mostrarTela('tela2FA'); closeMenu()">Segurança</a></li>
+          <li id="navRegistroCrew" style="display: none;"><a href="#" onclick="mostrarTela('telaRegistroCrew'); closeMenu()">👥 Registrar Funcionário</a></li>
           <li id="navAdmin" style="display: none;"><a href="#" onclick="mostrarTela('telaAdmin'); closeMenu()">👨‍💼 Admin</a></li>
           <li><a href="#" onclick="mudarTurno(); closeMenu()">Mudar Turno</a></li>
           <li><a href="#" onclick="logout()">Logout</a></li>
@@ -267,6 +268,54 @@
       </div>
 
       <button type="button" class="btn" style="background: #95a5a6;" onclick="mostrarTela('telaRelatorio')">Voltar</button>
+    </div>
+  </div>
+
+  <!-- TELA REGISTRO DE FUNCIONÁRIOS -->
+  <div id="telaRegistroCrew" class="tela">
+    <div class="container">
+      <h1>Registrar Novo Funcionário</h1>
+      
+      <div style="max-width: 600px; margin: 0 auto;">
+        <div style="background: white; padding: 30px; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 20px;">
+          <h2>Adicionar Novo Membro da Equipe</h2>
+          <p style="color: #666; margin-bottom: 20px;">Preencha os dados abaixo para registrar um novo funcionário no sistema.</p>
+          
+          <form id="formRegistrarCrew" style="display: flex; flex-direction: column; gap: 15px;">
+            <div>
+              <label style="display: block; margin-bottom: 5px; font-weight: bold;">Nome do Funcionário *</label>
+              <input type="text" id="nomeCrew" placeholder="Digite o nome completo" required style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+            </div>
+
+            <div>
+              <label style="display: block; margin-bottom: 5px; font-weight: bold;">Senha *</label>
+              <input type="password" id="senhaCrew" placeholder="Digite uma senha segura" required style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+            </div>
+
+            <div>
+              <label style="display: block; margin-bottom: 5px; font-weight: bold;">Confirmar Senha *</label>
+              <input type="password" id="confirmarSenhaCrew" placeholder="Confirme a senha" required style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+            </div>
+
+            <div style="background: #f0f7ff; padding: 15px; border-radius: 4px; border-left: 4px solid #3498db;">
+              <p style="margin: 0; font-size: 13px; color: #555;">
+                <strong>💡 Dica:</strong> Escolha uma senha forte com letras, números e caracteres especiais para melhor segurança.
+              </p>
+            </div>
+
+            <button type="submit" class="btn btn-success" style="padding: 12px; font-size: 16px; font-weight: bold;">✅ Registrar Funcionário</button>
+          </form>
+
+          <div id="mensagemRegistroCrew" class="mensagem" style="margin-top: 15px;"></div>
+        </div>
+
+        <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
+          <h3>Funcionários Registrados</h3>
+          <div id="listaCrewRegistrados" style="display: grid; gap: 10px; max-height: 400px; overflow-y: auto;"></div>
+        </div>
+      </div>
+
+      <button type="button" class="btn" style="background: #95a5a6; margin-top: 20px;" onclick="mostrarTela('telaVendas')">← Voltar</button>
     </div>
   </div>
 

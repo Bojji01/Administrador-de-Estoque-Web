@@ -12,6 +12,8 @@
     "cors": "^2.8.5",
     "express": "^4.22.1",
     "express-session": "^1.17.3",
+    "qrcode": "^1.5.4",
+    "speakeasy": "^2.0.0",
     "sqlite3": "^5.1.7"
   },
   "devDependencies": {
