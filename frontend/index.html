@@ -317,6 +317,23 @@
 
       <button type="button" class="btn" style="background: #95a5a6; margin-top: 20px;" onclick="mostrarTela('telaVendas')">← Voltar</button>
     </div>
+
+    <!-- Modal de alteração de senha do crew member -->
+    <div id="modalAlterarSenhaCrew" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.4); z-index:9999; align-items:center; justify-content:center;">
+      <div style="background:white; padding:30px; border-radius:8px; max-width:350px; width:90%; box-shadow:0 2px 16px rgba(0,0,0,0.15); position:relative;">
+        <h3>Alterar Senha</h3>
+        <form id="formAlterarSenhaCrew" style="display:flex; flex-direction:column; gap:12px;">
+          <input type="password" id="novaSenhaCrew" placeholder="Nova senha" required style="padding:10px; border:1px solid #ddd; border-radius:4px;">
+          <input type="password" id="confirmarNovaSenhaCrew" placeholder="Confirmar nova senha" required style="padding:10px; border:1px solid #ddd; border-radius:4px;">
+          <input type="hidden" id="idCrewAlterarSenha">
+          <div id="mensagemAlterarSenhaCrew" class="mensagem"></div>
+          <div style="display:flex; gap:10px; margin-top:10px;">
+            <button type="submit" class="btn btn-success" style="flex:1;">Salvar</button>
+            <button type="button" class="btn btn-danger" style="flex:1;" onclick="fecharModalAlterarSenhaCrew()">Cancelar</button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 
   <!-- PAINEL ADMIN -->

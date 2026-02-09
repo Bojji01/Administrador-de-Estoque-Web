@@ -139,6 +139,15 @@ function configurarEventos() {
       registrarCrewMembro();
     });
   }
+
+  // Evento do formulário de alterar senha de crew member
+  const formAlterarSenhaCrew = document.getElementById('formAlterarSenhaCrew');
+  if (formAlterarSenhaCrew) {
+    formAlterarSenhaCrew.addEventListener('submit', (e) => {
+      e.preventDefault();
+      alterarSenhaCrew();
+    });
+  }
 }
 
 // ========== AUTENTICAÇÃO ==========
@@ -1334,18 +1343,80 @@ function carregarListaCrewRegistrados() {
       const html = usuarios.map(u => `
         <div style="background: #f9f9f9; padding: 12px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid ${u.is_admin ? '#9b59b6' : '#3498db'};">
           <div>
-            <p style="margin: 0; font-weight: bold;">${u.nome}</p>
-            <p style="margin: 5px 0 0 0; font-size: 12px; color: #666;">${u.is_admin ? '👨‍💼 Administrador' : '👤 Crew Member'} • ${new Date(u.criado_em).toLocaleDateString('pt-BR')}</p>
+            <p style=\"margin: 0; font-weight: bold;\">${u.nome}</p>
+            <p style=\"margin: 5px 0 0 0; font-size: 12px; color: #666;\">${u.is_admin ? '👨‍💼 Administrador' : '👤 Crew Member'} • ${new Date(u.criado_em).toLocaleDateString('pt-BR')}</p>
           </div>
-          ${!u.is_admin ? `<button class="btn btn-danger" onclick="deletarCrewMembro(${u.id}, '${u.nome}')">Remover</button>` : ''}
+          <div style=\"display:flex; gap:8px;\">
+            ${!u.is_admin ? `<button class=\"btn btn-warning\" onclick=\"abrirModalAlterarSenhaCrew(${u.id}, '${u.nome}')\">Alterar Senha</button>` : ''}
+            ${!u.is_admin ? `<button class=\"btn btn-danger\" onclick=\"deletarCrewMembro(${u.id}, '${u.nome}')\">Remover</button>` : ''}
+          </div>
         </div>
       `).join('');
-      
       container.innerHTML = html;
     })
     .catch(err => {
       console.error('Erro ao carregar crew members:', err);
       document.getElementById('listaCrewRegistrados').innerHTML = '<p style="color: #e74c3c;">Erro ao carregar crew members</p>';
+    });
+}
+
+// ========== FUNÇÕES DO MODAL DE ALTERAR SENHA ==========
+
+function abrirModalAlterarSenhaCrew(id, nome) {
+  document.getElementById('modalAlterarSenhaCrew').style.display = 'flex';
+  document.getElementById('idCrewAlterarSenha').value = id;
+  document.getElementById('novaSenhaCrew').value = '';
+  document.getElementById('confirmarNovaSenhaCrew').value = '';
+  document.getElementById('mensagemAlterarSenhaCrew').textContent = '';
+}
+
+function fecharModalAlterarSenhaCrew() {
+  document.getElementById('modalAlterarSenhaCrew').style.display = 'none';
+}
+
+function alterarSenhaCrew() {
+  const id = document.getElementById('idCrewAlterarSenha').value;
+  const novaSenha = document.getElementById('novaSenhaCrew').value;
+  const confirmar = document.getElementById('confirmarNovaSenhaCrew').value;
+  const msg = document.getElementById('mensagemAlterarSenhaCrew');
+
+  if (!novaSenha || !confirmar) {
+    msg.textContent = 'Preencha todos os campos.';
+    msg.className = 'mensagem erro';
+    return;
+  }
+  if (novaSenha.length < 4) {
+    msg.textContent = 'A senha deve ter pelo menos 4 caracteres.';
+    msg.className = 'mensagem erro';
+    return;
+  }
+  if (novaSenha !== confirmar) {
+    msg.textContent = 'As senhas não conferem.';
+    msg.className = 'mensagem erro';
+    return;
+  }
+
+  fetch(`${API_URL}/admin/funcionarios/${id}/senha`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ senha: novaSenha }),
+    credentials: 'include'
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.sucesso) {
+        msg.textContent = 'Senha alterada com sucesso!';
+        msg.className = 'mensagem sucesso';
+        setTimeout(() => fecharModalAlterarSenhaCrew(), 1200);
+        carregarListaCrewRegistrados();
+      } else {
+        msg.textContent = data.erro || 'Erro ao alterar senha.';
+        msg.className = 'mensagem erro';
+      }
+    })
+    .catch(() => {
+      msg.textContent = 'Erro ao conectar com servidor.';
+      msg.className = 'mensagem erro';
     });
 }
 

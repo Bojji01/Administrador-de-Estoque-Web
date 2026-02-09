@@ -1,5 +1,6 @@
 const express = require('express');
 const session = require('express-session');
+// ...existing code...
 const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
 const bcrypt = require('bcryptjs');
@@ -248,6 +249,25 @@ app.delete('/api/admin/funcionarios/:id', verificarAdmin, (req, res) => {
       return res.status(500).json({ erro: 'Erro ao deletar funcionário' });
     }
     res.json({ sucesso: true, mensagem: 'Funcionário deletado com sucesso' });
+  });
+});
+
+// Alterar senha de funcionário (apenas admin)
+app.put('/api/admin/funcionarios/:id/senha', verificarAdmin, (req, res) => {
+  const funcionarioId = req.params.id;
+  const { senha } = req.body;
+  if (!senha || senha.length < 4) {
+    return res.status(400).json({ erro: 'A senha deve ter pelo menos 4 caracteres' });
+  }
+  const senhaHash = bcrypt.hashSync(senha, 10);
+  db.run('UPDATE usuarios SET senha = ? WHERE id = ?', [senhaHash, funcionarioId], function(err) {
+    if (err) {
+      return res.status(500).json({ erro: 'Erro ao alterar senha' });
+    }
+    if (this.changes === 0) {
+      return res.status(404).json({ erro: 'Funcionário não encontrado' });
+    }
+    res.json({ sucesso: true, mensagem: 'Senha alterada com sucesso' });
   });
 });
 
