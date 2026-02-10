@@ -107,6 +107,14 @@
       
       <div class="secao-vendas">
         <h2>Clique nos Produtos para Vender</h2>
+        
+        <div style="margin-bottom: 20px; display: flex; gap: 20px; flex-wrap: nowrap; overflow-x: auto;">
+          <button class="btn btn-primary" onclick="filtrarPorCategoria('todos')" id="btnTodas" style="width: 60px; height: 60px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 24px; white-space: nowrap; flex-shrink: 0;">🛍️</button>
+          <button class="btn" onclick="filtrarPorCategoria('cigarro')" id="btnCigarro" style="width: 60px; height: 60px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 24px; white-space: nowrap; flex-shrink: 0;">🚬</button>
+          <button class="btn" onclick="filtrarPorCategoria('recarga/chip')" id="btnRecarga" style="width: 60px; height: 60px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 24px; white-space: nowrap; flex-shrink: 0;">📱</button>
+          <button class="btn" onclick="filtrarPorCategoria('mercadoria')" id="btnMercadoria" style="width: 60px; height: 60px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 24px; white-space: nowrap; flex-shrink: 0;">📦</button>
+        </div>
+
         <div id="gridProdutos" class="grid-produtos"></div>
       </div>
 

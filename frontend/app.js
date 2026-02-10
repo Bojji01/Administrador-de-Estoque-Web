@@ -11,7 +11,8 @@ let estadoApp = {
   carrinho: [], // Array de itens: [{ produtoId, quantidade }, ...]
   intervaloRelatorio: null,
   menuAberto: false,
-  isAdmin: false
+  isAdmin: false,
+  categoriaFiltro: 'todos'  // Categoria selecionada para filtrar produtos
 };
 
 // ========== HAMBURGER MENU ==========
@@ -280,7 +281,16 @@ function carregarProdutos() {
 
 function atualizarGridProdutos() {
   const grid = document.getElementById('gridProdutos');
-  const html = estadoApp.produtos.map(p => {
+  
+  // Filtrar produtos por categoria
+  let produtosFiltrados = estadoApp.produtos;
+  if (estadoApp.categoriaFiltro !== 'todos') {
+    produtosFiltrados = estadoApp.produtos.filter(p => 
+      (p.categoria || 'mercadoria') === estadoApp.categoriaFiltro
+    );
+  }
+  
+  const html = produtosFiltrados.map(p => {
     const itemCarrinho = estadoApp.carrinho.find(item => item.produtoId === p.id);
     const selecionado = itemCarrinho ? 'selecionado' : '';
     const qtyDisplay = itemCarrinho ? `(${itemCarrinho.quantidade})` : '';
@@ -296,7 +306,30 @@ function atualizarGridProdutos() {
     </div>
   `;
   }).join('');
-  grid.innerHTML = html || '<p>Nenhum produto cadastrado</p>';
+  grid.innerHTML = html || '<p>Nenhum produto cadastrado nesta categoria</p>';
+}
+
+function filtrarPorCategoria(categoria) {
+  estadoApp.categoriaFiltro = categoria;
+  atualizarGridProdutos();
+  
+  // Atualizar estilo dos botões de categoria
+  const botoes = {
+    'todos': 'btnTodas',
+    'cigarro': 'btnCigarro',
+    'recarga/chip': 'btnRecarga',
+    'mercadoria': 'btnMercadoria'
+  };
+  
+  Object.values(botoes).forEach(btnId => {
+    const btn = document.getElementById(btnId);
+    if (btn) btn.classList.remove('btn-primary');
+  });
+  
+  if (botoes[categoria]) {
+    const btnSelecionado = document.getElementById(botoes[categoria]);
+    if (btnSelecionado) btnSelecionado.classList.add('btn-primary');
+  }
 }
 
 function atualizarTabelaProdutos() {
@@ -918,6 +951,18 @@ function mostrarTela(telaNova) {
 
     // Carregar dados ao abrir telas
     if (telaNova === 'telaVendas') {
+      estadoApp.categoriaFiltro = 'todos';  // Resetar filtro de categoria
+      carregarProdutos();
+      
+      // Destacar botão "Todos"
+      const botoes = ['btnTodas', 'btnCigarro', 'btnRecarga', 'btnMercadoria'];
+      botoes.forEach(btnId => {
+        const btn = document.getElementById(btnId);
+        if (btn) btn.classList.remove('btn-primary');
+      });
+      const btnTodos = document.getElementById('btnTodas');
+      if (btnTodos) btnTodos.classList.add('btn-primary');
+      
       carregarVendasDia();
       // Auto-refresh a cada 2 segundos
       estadoApp.intervaloRelatorio = setInterval(() => {
